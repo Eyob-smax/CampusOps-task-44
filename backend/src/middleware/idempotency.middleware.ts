@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { getRedisClient } from '../lib/redis';
 import { logger } from '../lib/logger';
+import { config } from '../config';
 
 const IDEMPOTENCY_TTL_SECONDS = 86_400; // 24 hours
 const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -9,7 +10,8 @@ const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[
  * Idempotency middleware for mutating endpoints.
  * Requires X-Idempotency-Key header (UUIDv4).
  * On duplicate key within 24h: returns cached response without re-processing.
- * Fail-open on Redis errors so transient Redis issues don't block requests.
+ * Fails closed on Redis errors by default to preserve replay protection guarantees.
+ * Can be set to fail-open via IDEMPOTENCY_REDIS_FAIL_OPEN=true.
  */
 export function idempotency(req: Request, res: Response, next: NextFunction): void {
   const key = req.headers['x-idempotency-key'] as string | undefined;
@@ -48,8 +50,18 @@ export function idempotency(req: Request, res: Response, next: NextFunction): vo
 
     next();
   }).catch((err) => {
-    logger.error({ msg: 'Idempotency Redis lookup failed — failing open', err });
-    next(); // Fail open
+    if (config.security.idempotencyRedisFailOpen) {
+      logger.error({ msg: 'Idempotency Redis lookup failed — fail-open mode', err });
+      next();
+      return;
+    }
+
+    logger.error({ msg: 'Idempotency Redis lookup failed — fail-closed mode', err });
+    res.status(503).json({
+      success: false,
+      error: 'Idempotency storage unavailable',
+      code: 'IDEMPOTENCY_UNAVAILABLE',
+    });
   });
 }
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 
 export const createTemplateSchema = z.object({
@@ -88,13 +89,50 @@ export async function calculateShippingFee(
 }
 
 export async function createTemplate(data: z.infer<typeof createTemplateSchema>) {
-  return prisma.shippingFeeTemplate.create({ data });
+  const parsed = createTemplateSchema.parse(data);
+
+  const createData: Prisma.ShippingFeeTemplateCreateInput = {
+    name: parsed.name,
+    tier: parsed.tier,
+    baseFee: parsed.baseFee,
+    baseWeightLb: parsed.baseWeightLb,
+    perLbFee: parsed.perLbFee,
+    maxItems: parsed.maxItems,
+    perItemFee: parsed.perItemFee,
+    surchargeAk: parsed.surchargeAk,
+    surchargeHi: parsed.surchargeHi,
+    isActive: parsed.isActive ?? true,
+    zone: {
+      connect: { id: parsed.zoneId },
+    },
+  };
+
+  return prisma.shippingFeeTemplate.create({ data: createData });
 }
 
 export async function updateTemplate(id: string, data: z.infer<typeof updateTemplateSchema>) {
   const existing = await prisma.shippingFeeTemplate.findUnique({ where: { id } });
   if (!existing) throwNotFound('Shipping template not found', 'TEMPLATE_NOT_FOUND');
-  return prisma.shippingFeeTemplate.update({ where: { id }, data });
+
+  const parsed = updateTemplateSchema.parse(data);
+  const updateData: Prisma.ShippingFeeTemplateUpdateInput = {};
+
+  if (parsed.name !== undefined) updateData.name = parsed.name;
+  if (parsed.tier !== undefined) updateData.tier = parsed.tier;
+  if (parsed.baseFee !== undefined) updateData.baseFee = parsed.baseFee;
+  if (parsed.baseWeightLb !== undefined) updateData.baseWeightLb = parsed.baseWeightLb;
+  if (parsed.perLbFee !== undefined) updateData.perLbFee = parsed.perLbFee;
+  if (parsed.maxItems !== undefined) updateData.maxItems = parsed.maxItems;
+  if (parsed.perItemFee !== undefined) updateData.perItemFee = parsed.perItemFee;
+  if (parsed.surchargeAk !== undefined) updateData.surchargeAk = parsed.surchargeAk;
+  if (parsed.surchargeHi !== undefined) updateData.surchargeHi = parsed.surchargeHi;
+  if (parsed.isActive !== undefined) updateData.isActive = parsed.isActive;
+
+  if (parsed.zoneId !== undefined) {
+    updateData.zone = { connect: { id: parsed.zoneId } };
+  }
+
+  return prisma.shippingFeeTemplate.update({ where: { id }, data: updateData });
 }
 
 export async function getTemplateById(id: string) {

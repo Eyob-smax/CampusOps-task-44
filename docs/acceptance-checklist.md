@@ -8,8 +8,8 @@ Maps every requirement from the original prompt to its implementation evidence.
 
 | Requirement                                         | Status | Evidence                                                                                                                                           |
 | --------------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Runs entirely on a disconnected local network       | ✓      | `docker-compose.yml` — no external network calls; all carrier sync is internal simulation                                                          |
-| Docker Compose single-command startup               | ✓      | `docker compose up` starts all 4 containers in dependency order                                                                                    |
+| Runs entirely on a disconnected local network       | ✓      | `docker-compose.yml` — no internet dependency; internal bridge networking; carrier connector can target on-prem endpoints only                    |
+| Docker Compose single-command startup               | ✓      | `docker compose up` starts all 5 containers in dependency order                                                                                    |
 | No host-level tooling required                      | ✓      | All runtime inside containers; `README.md` Prerequisites section                                                                                   |
 | MySQL persistence                                   | ✓      | `campusops-db` container; `backend/prisma/schema.prisma` (30+ models)                                                                              |
 | Redis for queues and caching                        | ✓      | `campusops-redis` container; BullMQ 8 queues; rate-limit and idempotency stores                                                                    |
@@ -17,7 +17,7 @@ Maps every requirement from the original prompt to its implementation evidence.
 | Docker secrets (never in env files)                 | ✓      | `secrets/encryption_key.txt`, `secrets/db_password.txt`, `secrets/jwt_secret.txt`; `backend/docker-entrypoint.sh` reads `/run/secrets/db_password` |
 | Database schema applied on first boot               | ✓      | `docker-entrypoint.sh`: `npx prisma db push --accept-data-loss`                                                                                    |
 | Seed accounts created on first boot when configured | ✓      | `docker-entrypoint.sh`: `node dist/database/seeders/seed.js`; `seed.ts` requires non-placeholder `SEED_*_PASSWORD` values                          |
-| HTTP-only LAN operation (TLS not required)          | ✓      | `README.md` LAN/TLS Notes; frontend on port 80; `docs/cert-rotation.md` documents optional TLS addition                                            |
+| TLS-first LAN operation                             | ✓      | `README.md` LAN/TLS notes; `reverse-proxy/nginx.conf` redirects 80 to 443 and proxies frontend/backend                                            |
 
 ---
 
@@ -134,7 +134,7 @@ Maps every requirement from the original prompt to its implementation evidence.
 | Shipment records linked to parcels                           | ✓      | `Shipment` → `Parcel` (1:many) in `prisma/schema.prisma`                                           |
 | Parcels linked to after-sales tickets                        | ✓      | `AfterSalesTicket.parcelId` FK in schema                                                           |
 | Tracking numbers stored                                      | ✓      | `Parcel.trackingNumber` field                                                                      |
-| Internal carrier sync (no internet)                          | ✓      | `carrier-sync.service.ts`: `simulateCarrierResponse()` pure function; age-bucket state transitions |
+| Internal carrier sync (no internet)                          | ✓      | `carrier-sync.service.ts`: connector mode posts to on-prem `carrier.connectorUrl`, with optional simulation fallback |
 | Shipment sync every 5 minutes                                | ✓      | `shipment-sync.worker.ts`; `campusops:shipment-sync` BullMQ queue                                  |
 | After-sales ticket types: delay, dispute, lost_item          | ✓      | `AfterSalesTicketType` enum; `after-sales.service.ts`                                              |
 | Evidence upload: JPEG/PNG, 10MB, sharp compress, aHash dedup | ✓      | `evidence.service.ts`; magic-byte check, sharp (max 1920px, quality 80), Hamming ≤5                |
@@ -216,7 +216,7 @@ Maps every requirement from the original prompt to its implementation evidence.
 | `docs/runbook.md`           | ✓      | On-call procedures, job failure playbooks, alert response guides                                                                                                                 |
 | `docs/backup.md`            | ✓      | Backup schedule, storage path, manifest format                                                                                                                                   |
 | `docs/restore.md`           | ✓      | Step-by-step restore from backup manifest                                                                                                                                        |
-| `docs/cert-rotation.md`     | ✓      | JWT secret rotation and optional TLS addition                                                                                                                                    |
+| `docs/cert-rotation.md`     | ✓      | JWT secret rotation and reverse-proxy TLS certificate rotation                                                                                                                       |
 | `docs/retention-cleanup.md` | ✓      | Log and backup retention policies                                                                                                                                                |
 | `docs/troubleshooting.md`   | ✓      | Common issues, container health checks, log inspection                                                                                                                           |
 | `README.md`                 | ✓      | Startup command, services/ports, seeded account configuration, verification checklist, test execution, backup/restore, file upload rules, LAN/TLS notes, operational assumptions |
@@ -231,8 +231,8 @@ The complete end-to-end QA path requires secrets plus configured seeded password
 
 ```bash
 cd TASK-15/repo
-docker compose up               # All 4 containers start; schema pushed; seed runs
-# → open https://localhost      # Login page appears (self-signed cert in disconnected LAN mode)
+docker compose up               # All 5 containers start; schema pushed; seed runs
+# -> open https://localhost     # Login page appears (self-signed cert in disconnected LAN mode)
 # → login as admin/<SEED_ADMIN_PASSWORD>
 # → verify Jobs screen shows 8 background jobs
 # → trigger a manual backup via API or Jobs screen

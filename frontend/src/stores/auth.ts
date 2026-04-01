@@ -4,34 +4,21 @@ import type { AuthUser } from "../types";
 import { apiClient } from "../api/client";
 import type { LoginResponse, TokenPair } from "../api/auth";
 
-// ---------------------------------------------------------------------------
-// Token storage strategy
-// ---------------------------------------------------------------------------
-// ACCESS TOKEN: Held **only** in Pinia state (memory). It is never written to
-// localStorage / sessionStorage, so it cannot be exfiltrated by an XSS payload
-// that reads `window.localStorage`. The trade-off is that a full page refresh
-// loses the access token; the app must silently re-authenticate via the refresh
-// token on init (see `initAuth`).
-//
-// REFRESH TOKEN: Stored in localStorage. Ideally this would be an HttpOnly
-// cookie set by the backend so JavaScript cannot access it at all. However,
-// for a LAN-deployed system that may not sit behind a reverse proxy capable of
-// setting HttpOnly cookies, localStorage is the practical choice. The risk is
-// partially mitigated by:
-//   1. Content-Security-Policy headers served by the backend (Helmet) which
-//      restrict inline scripts and third-party origins, reducing XSS surface.
-//   2. Short refresh-token lifetimes combined with rotation on every use.
-// In a production deployment with a proper proxy (e.g. nginx), migrate to
-// HttpOnly secure cookies.
-// ---------------------------------------------------------------------------
-
 const REFRESH_KEY = "refresh_token";
-const REFRESH_MODE = (import.meta.env.VITE_AUTH_REFRESH_MODE ?? "localstorage")
+const REFRESH_MODE = (import.meta.env.VITE_AUTH_REFRESH_MODE ?? "cookie")
   .toLowerCase()
   .trim();
 const USE_REFRESH_COOKIE = REFRESH_MODE === "cookie";
+const COOKIE_REFRESH_SENTINEL = "__cookie_mode__";
+let memoryRefreshToken: string | null = null;
+
+type ApiEnvelope<T> = {
+  success: boolean;
+  data: T;
+};
 
 function writeRefreshToken(token: string): void {
+  memoryRefreshToken = token;
   if (!USE_REFRESH_COOKIE) {
     localStorage.setItem(REFRESH_KEY, token);
   }
@@ -40,16 +27,28 @@ function writeRefreshToken(token: string): void {
 function readRefreshToken(): string | null {
   if (USE_REFRESH_COOKIE) {
     // Cookie mode cannot be inspected from JS by design (HttpOnly).
-    // The backend is expected to read the cookie server-side on refresh.
-    return "__cookie_mode__";
+    // Use in-memory token and support one-time migration from legacy
+    // localStorage value, then retire the fallback immediately.
+    if (memoryRefreshToken) {
+      return memoryRefreshToken;
+    }
+
+    const legacyToken = localStorage.getItem(REFRESH_KEY);
+    if (legacyToken) {
+      memoryRefreshToken = legacyToken;
+      localStorage.removeItem(REFRESH_KEY);
+      return legacyToken;
+    }
+
+    return COOKIE_REFRESH_SENTINEL;
   }
   return localStorage.getItem(REFRESH_KEY);
 }
 
 function clearRefreshToken(): void {
-  if (!USE_REFRESH_COOKIE) {
-    localStorage.removeItem(REFRESH_KEY);
-  }
+  memoryRefreshToken = null;
+  // Always clear legacy localStorage key for user-switch isolation.
+  localStorage.removeItem(REFRESH_KEY);
 }
 
 /**
@@ -63,6 +62,8 @@ export function getAccessToken(): string | null {
 }
 
 export const useAuthStore = defineStore("auth", () => {
+  memoryRefreshToken = null;
+
   // Access token lives in memory only — never persisted to storage.
   const user = ref<AuthUser | null>(null);
   const accessToken = ref<string | null>(null);
@@ -77,14 +78,15 @@ export const useAuthStore = defineStore("auth", () => {
   const isAuthenticated = computed(() => !!accessToken.value && !!user.value);
 
   async function login(username: string, password: string): Promise<void> {
-    const res = await apiClient.post<LoginResponse>("/api/auth/login", {
+    const res = await apiClient.post<ApiEnvelope<LoginResponse>>("/api/auth/login", {
       username,
       password,
     });
-    _applyTokens(res.data.accessToken, res.data.user);
-    writeRefreshToken(res.data.refreshToken);
+    const payload = res.data.data;
+    _applyTokens(payload.accessToken, payload.user);
+    writeRefreshToken(payload.refreshToken);
     authInitialized.value = true;
-    scheduleRefresh(res.data.expiresIn);
+    scheduleRefresh(payload.expiresIn);
   }
 
   async function refreshSession(): Promise<void> {
@@ -94,17 +96,21 @@ export const useAuthStore = defineStore("auth", () => {
       return;
     }
     try {
-      const payload = USE_REFRESH_COOKIE ? {} : { refreshToken: rt };
-      const res = await apiClient.post<TokenPair>("/api/auth/refresh", payload);
+      const payload =
+        USE_REFRESH_COOKIE && rt === COOKIE_REFRESH_SENTINEL
+          ? {}
+          : { refreshToken: rt };
+      const res = await apiClient.post<ApiEnvelope<TokenPair>>("/api/auth/refresh", payload);
+      const tokens = res.data.data;
       // Fetch user info separately since refresh endpoint only returns tokens
-      const meRes = await apiClient.get<AuthUser>("/api/auth/me", {
-        headers: { Authorization: `Bearer ${res.data.accessToken}` },
+      const meRes = await apiClient.get<ApiEnvelope<AuthUser>>("/api/auth/me", {
+        headers: { Authorization: `Bearer ${tokens.accessToken}` },
       });
-      _applyTokens(res.data.accessToken, meRes.data);
-      if (res.data.refreshToken) {
-        writeRefreshToken(res.data.refreshToken);
+      _applyTokens(tokens.accessToken, meRes.data.data);
+      if (tokens.refreshToken) {
+        writeRefreshToken(tokens.refreshToken);
       }
-      scheduleRefresh(res.data.expiresIn);
+      scheduleRefresh(tokens.expiresIn);
     } catch {
       logout();
     }
@@ -140,6 +146,11 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   async function ensureInitialized(): Promise<void> {
+    if (isAuthenticated.value) {
+      authInitialized.value = true;
+      return;
+    }
+
     if (authInitialized.value) return;
     if (!initPromise) {
       initPromise = (async () => {

@@ -1,6 +1,15 @@
 import fs from 'fs';
 import path from 'path';
 
+const isTestEnv = (process.env.NODE_ENV ?? 'development') === 'test';
+const isProductionEnv = (process.env.NODE_ENV ?? 'development') === 'production';
+
+function envBoolean(name: string, defaultValue: boolean): boolean {
+  const raw = process.env[name];
+  if (raw === undefined) return defaultValue;
+  return raw.toLowerCase() === 'true';
+}
+
 function readSecret(secretName: string, envFallback?: string): string {
   const secretPath = `/run/secrets/${secretName}`;
   if (fs.existsSync(secretPath)) {
@@ -41,6 +50,12 @@ export const config = {
     url: process.env.REDIS_URL ?? 'redis://localhost:6379',
   },
 
+  security: {
+    enforceTls: envBoolean('ENFORCE_TLS', isProductionEnv),
+    authRedisFailOpen: envBoolean('AUTH_REDIS_FAIL_OPEN', isTestEnv),
+    idempotencyRedisFailOpen: envBoolean('IDEMPOTENCY_REDIS_FAIL_OPEN', isTestEnv),
+  },
+
   jwt: {
     secret: readSecret('jwt_secret', 'JWT_SECRET'),
     accessExpiresIn: '15m',
@@ -71,8 +86,9 @@ export const config = {
   },
 
   rateLimit: {
-    global: { windowMs: 60_000, max: 100 },
-    auth: { windowMs: 60_000, max: 20 },
+    // Keep limiter active in tests for header assertions, but avoid suite-wide throttling.
+    global: { windowMs: 60_000, max: isTestEnv ? 10_000 : 100 },
+    auth: { windowMs: 60_000, max: isTestEnv ? 5_000 : 20 },
   },
 
   circuitBreaker: {
@@ -95,6 +111,9 @@ export const config = {
     intervalMinutes: 15,
     maxRetries: 4,
     backoffDelaysMs: [30_000, 120_000, 480_000, 1_920_000] as number[],
+    mode: process.env.CARRIER_SYNC_MODE ?? (isProductionEnv ? 'connector' : 'simulation'),
+    connectorTimeoutMs: parseInt(process.env.CARRIER_SYNC_TIMEOUT_MS ?? '5000', 10),
+    allowSimulationFallback: envBoolean('CARRIER_SYNC_ALLOW_SIMULATION_FALLBACK', !isProductionEnv),
   },
 
   perceptualHash: {

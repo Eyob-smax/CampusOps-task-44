@@ -16,8 +16,7 @@ export function setupSocket(httpServer: HttpServer): SocketServer {
     pingTimeout: 60_000,
   });
 
-  // JWT authentication for all socket connections
-  io.use((socket: Socket, next) => {
+  const authenticateSocket = (socket: Socket, next: (err?: Error) => void) => {
     const token = socket.handshake.auth?.token as string | undefined;
     if (!token) {
       return next(new Error('Authentication required'));
@@ -29,10 +28,14 @@ export function setupSocket(httpServer: HttpServer): SocketServer {
     } catch {
       next(new Error('Invalid token'));
     }
-  });
+  };
+
+  // Keep auth on the default namespace.
+  io.use(authenticateSocket);
 
   // Namespace: /classroom — real-time classroom status and anomaly events
   const classroomNs = io.of('/classroom');
+  classroomNs.use(authenticateSocket);
   classroomNs.use(requireRole(['administrator', 'classroom_supervisor']));
   classroomNs.on('connection', (socket) => {
     const user = (socket as Socket & { user: AuthenticatedUser }).user;
@@ -44,6 +47,7 @@ export function setupSocket(httpServer: HttpServer): SocketServer {
 
   // Namespace: /parking — parking space counts and alert events
   const parkingNs = io.of('/parking');
+  parkingNs.use(authenticateSocket);
   parkingNs.use(requireRole(['administrator', 'operations_manager', 'classroom_supervisor']));
   parkingNs.on('connection', (socket) => {
     const user = (socket as Socket & { user: AuthenticatedUser }).user;
@@ -52,6 +56,7 @@ export function setupSocket(httpServer: HttpServer): SocketServer {
 
   // Namespace: /supervisor-queue — escalated alert queue
   const supervisorNs = io.of('/supervisor-queue');
+  supervisorNs.use(authenticateSocket);
   supervisorNs.use(requireRole(['administrator', 'classroom_supervisor']));
   supervisorNs.on('connection', (socket) => {
     logger.info({ msg: 'Socket /supervisor-queue connected' });
@@ -60,12 +65,14 @@ export function setupSocket(httpServer: HttpServer): SocketServer {
   // Namespace: /jobs — background job progress
   const jobsNs = io.of('/jobs');
   // All authenticated users can subscribe to job events
+  jobsNs.use(authenticateSocket);
   jobsNs.on('connection', () => {
     logger.info({ msg: 'Socket /jobs connected' });
   });
 
   // Namespace: /alerts — threshold breach banners (all authenticated users)
   const alertsNs = io.of('/alerts');
+  alertsNs.use(authenticateSocket);
   alertsNs.on('connection', () => {
     logger.info({ msg: 'Socket /alerts connected' });
   });

@@ -14,20 +14,31 @@ const updateStatusSchema = z.object({ status: z.string().min(1) });
 export async function listFulfillments(req: Request, res: Response, next: NextFunction) {
   try {
     const { studentId, status, startDate, endDate, page, limit } = req.query as any;
-    res.json(await listFulfillmentRequests({ studentId, status, startDate, endDate,
-      page: page ? Number(page) : undefined, limit: limit ? Number(limit) : undefined }));
+    const data = await listFulfillmentRequests({
+      studentId,
+      status,
+      startDate,
+      endDate,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
+    res.json({ success: true, data });
   } catch (err) { next(err); }
 }
 
 export async function getFulfillment(req: Request, res: Response, next: NextFunction) {
-  try { res.json(await getFulfillmentById(req.params.id)); } catch (err) { next(err); }
+  try {
+    const data = await getFulfillmentById(req.params.id);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
 }
 
 export async function createFulfillmentHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const body = createFulfillmentSchema.parse(req.body);
     const actorId = (req as any).user?.id ?? 'system';
-    res.status(201).json(await createFulfillmentRequest(body, actorId));
+    const data = await createFulfillmentRequest(body, actorId);
+    res.status(201).json({ success: true, data });
   } catch (err) { next(err); }
 }
 
@@ -35,13 +46,15 @@ export async function updateStatusHandler(req: Request, res: Response, next: Nex
   try {
     const { status } = updateStatusSchema.parse(req.body);
     const actorId = (req as any).user?.id ?? 'system';
-    res.json(await updateFulfillmentStatus(req.params.id, status, actorId));
+    const data = await updateFulfillmentStatus(req.params.id, status, actorId);
+    res.json({ success: true, data });
   } catch (err) { next(err); }
 }
 
 export async function cancelFulfillmentHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const actorId = (req as any).user?.id ?? 'system';
-    res.json(await cancelFulfillment(req.params.id, actorId));
+    const data = await cancelFulfillment(req.params.id, actorId);
+    res.json({ success: true, data });
   } catch (err) { next(err); }
 }

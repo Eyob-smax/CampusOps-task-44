@@ -7,9 +7,11 @@ import { requestLoggerMiddleware } from "./middleware/request-logger.middleware"
 import { errorHandlerMiddleware } from "./middleware/error-handler.middleware";
 import { globalRateLimiter } from "./middleware/rate-limit.middleware";
 import { registerRoutes } from "./routes";
+import { config } from "./config";
 
 export function createApp(): Application {
   const app = express();
+  app.set("trust proxy", 1);
 
   // ---- Security headers ----
   app.use(
@@ -33,6 +35,28 @@ export function createApp(): Application {
       credentials: true,
     }),
   );
+
+  if (config.security.enforceTls) {
+    app.use((req, res, next) => {
+      if (req.path === "/health") {
+        next();
+        return;
+      }
+
+      const forwardedProto = req.headers["x-forwarded-proto"];
+      const isTls = req.secure || forwardedProto === "https";
+      if (isTls) {
+        next();
+        return;
+      }
+
+      res.status(426).json({
+        success: false,
+        error: "HTTPS is required",
+        code: "TLS_REQUIRED",
+      });
+    });
+  }
 
   // ---- Compression ----
   app.use(compression());

@@ -12,7 +12,7 @@ import {
 export async function listThresholdsHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const thresholds = await listThresholds();
-    res.json({ data: thresholds });
+    res.json({ success: true, data: thresholds });
   } catch (err) {
     next(err);
   }
@@ -21,7 +21,7 @@ export async function listThresholdsHandler(req: Request, res: Response, next: N
 export async function getThresholdByIdHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const threshold = await getThresholdById(req.params.id);
-    res.json({ data: threshold });
+    res.json({ success: true, data: threshold });
   } catch (err) {
     next(err);
   }
@@ -39,7 +39,7 @@ export async function createThresholdHandler(req: Request, res: Response, next: 
     }
     const actorId = (req as any).user?.id ?? 'unknown';
     const threshold = await createThreshold(parsed.data, actorId);
-    res.status(201).json({ data: threshold });
+    res.status(201).json({ success: true, data: threshold });
   } catch (err) {
     next(err);
   }
@@ -57,7 +57,7 @@ export async function updateThresholdHandler(req: Request, res: Response, next: 
     }
     const actorId = (req as any).user?.id ?? 'unknown';
     const updated = await updateThreshold(req.params.id, parsed.data, actorId);
-    res.json({ data: updated });
+    res.json({ success: true, data: updated });
   } catch (err) {
     next(err);
   }

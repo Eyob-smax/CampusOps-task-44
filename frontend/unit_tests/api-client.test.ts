@@ -60,6 +60,19 @@ async function runResponseErrorInterceptor(error: any): Promise<any> {
   return Promise.reject(error);
 }
 
+function runResponseSuccessInterceptor(response: any): any {
+  const handlers = (apiClient.interceptors.response as any).handlers as Array<{
+    fulfilled: ((r: any) => any) | null;
+    rejected: ((e: any) => any) | null;
+  }>;
+  for (const h of handlers) {
+    if (h.fulfilled) {
+      return h.fulfilled(response);
+    }
+  }
+  return response;
+}
+
 function clearLS() {
   Object.keys(_ls).forEach((k) => delete _ls[k]);
 }
@@ -71,7 +84,7 @@ describe("API Client", () => {
   beforeEach(() => {
     clearLS();
     mockAccessToken = null;
-    (globalThis as any).window.location.href = "";
+    (globalThis as any).window.location.href = "http://localhost/";
   });
 
   // -----------------------------------------------------------------------
@@ -131,11 +144,24 @@ describe("API Client", () => {
   // -----------------------------------------------------------------------
   // 401 response handling
   // -----------------------------------------------------------------------
+  describe("response shape", () => {
+    it("keeps fulfilled Axios responses intact", () => {
+      const response = {
+        data: { success: true, data: { hello: "world" } },
+        status: 200,
+      };
+      const result = runResponseSuccessInterceptor(response);
+      expect(result).toBe(response);
+      expect(result.data.data.hello).toBe("world");
+    });
+  });
+
   describe("401 response", () => {
     it("redirects to /login", async () => {
       _ls["access_token"] = "old-token";
       const error = {
         response: { status: 401, data: { message: "Unauthorized" } },
+        config: { url: "/api/students" },
       };
 
       await expect(runResponseErrorInterceptor(error)).rejects.toEqual({
@@ -144,6 +170,37 @@ describe("API Client", () => {
 
       expect(_ls["access_token"]).toBe("old-token");
       expect((globalThis as any).window.location.href).toBe("/login");
+    });
+
+    it("does not redirect for /api/auth/refresh 401", async () => {
+      const error = {
+        response: { status: 401, data: { message: "Unauthorized" } },
+        config: { url: "/api/auth/refresh" },
+      };
+
+      await expect(runResponseErrorInterceptor(error)).rejects.toEqual({
+        message: "Unauthorized",
+      });
+
+      expect((globalThis as any).window.location.href).toBe(
+        "http://localhost/",
+      );
+    });
+
+    it("does not redirect when already on /login", async () => {
+      (globalThis as any).window.location.href = "http://localhost/login";
+      const error = {
+        response: { status: 401, data: { message: "Unauthorized" } },
+        config: { url: "/api/students" },
+      };
+
+      await expect(runResponseErrorInterceptor(error)).rejects.toEqual({
+        message: "Unauthorized",
+      });
+
+      expect((globalThis as any).window.location.href).toBe(
+        "http://localhost/login",
+      );
     });
 
     it("does not redirect for non-401 errors", async () => {
@@ -157,7 +214,9 @@ describe("API Client", () => {
       });
 
       expect(_ls["access_token"]).toBe("my-token");
-      expect((globalThis as any).window.location.href).toBe("");
+      expect((globalThis as any).window.location.href).toBe(
+        "http://localhost/",
+      );
     });
   });
 });

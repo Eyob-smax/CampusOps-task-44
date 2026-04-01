@@ -1,5 +1,6 @@
 import { apiClient } from "./client";
 import type { AuthUser } from "../types";
+import type { AxiosResponse } from "axios";
 
 export interface LoginResponse {
   accessToken: string;
@@ -14,32 +15,44 @@ export interface TokenPair {
   expiresIn: number;
 }
 
+export interface ApiEnvelope<T> {
+  success: boolean;
+  data: T;
+  error?: string;
+}
+
 export const authApi = {
-  login(username: string, password: string): Promise<LoginResponse> {
+  login(
+    username: string,
+    password: string,
+  ): Promise<AxiosResponse<ApiEnvelope<LoginResponse>>> {
     return apiClient.post("/api/auth/login", {
       username,
       password,
-    }) as unknown as Promise<LoginResponse>;
+    });
   },
 
-  refresh(refreshToken: string): Promise<TokenPair> {
+  refresh(refreshToken: string): Promise<AxiosResponse<ApiEnvelope<TokenPair>>> {
     return apiClient.post("/api/auth/refresh", {
       refreshToken,
-    }) as unknown as Promise<TokenPair>;
+    });
   },
 
-  logout(): Promise<void> {
-    return apiClient.post("/api/auth/logout") as unknown as Promise<void>;
+  logout(): Promise<AxiosResponse<ApiEnvelope<unknown>>> {
+    return apiClient.post("/api/auth/logout");
   },
 
-  me(): Promise<AuthUser> {
-    return apiClient.get("/api/auth/me") as unknown as Promise<AuthUser>;
+  me(): Promise<AxiosResponse<ApiEnvelope<AuthUser>>> {
+    return apiClient.get("/api/auth/me");
   },
 
-  changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  changePassword(
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<AxiosResponse<ApiEnvelope<unknown>>> {
     return apiClient.post("/api/auth/change-password", {
       currentPassword,
       newPassword,
-    }) as unknown as Promise<void>;
+    });
   },
 };

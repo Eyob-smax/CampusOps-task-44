@@ -69,10 +69,13 @@ describe('Auth Store', () => {
       const mockUser = makeUser('operations_manager');
       mockPost.mockResolvedValueOnce({
         data: {
-          accessToken: 'access-123',
-          refreshToken: 'refresh-456',
-          expiresIn: 3600,
-          user: mockUser,
+          success: true,
+          data: {
+            accessToken: 'access-123',
+            refreshToken: 'refresh-456',
+            expiresIn: 3600,
+            user: mockUser,
+          },
         },
       });
 
@@ -81,13 +84,16 @@ describe('Auth Store', () => {
 
       expect(auth.accessToken).toBe('access-123');
       expect(auth.user).toEqual(mockUser);
-      // refresh_token is stored via the same globalThis.localStorage
-      expect(globalThis.localStorage.getItem('refresh_token')).toBe('refresh-456');
+      // Default cookie mode does not persist refresh token to localStorage.
+      expect(globalThis.localStorage.getItem('refresh_token')).toBeNull();
     });
 
     it('calls apiClient.post with correct credentials', async () => {
       mockPost.mockResolvedValueOnce({
-        data: { accessToken: 'a', refreshToken: 'r', expiresIn: 60, user: makeUser() },
+        data: {
+          success: true,
+          data: { accessToken: 'a', refreshToken: 'r', expiresIn: 60, user: makeUser() },
+        },
       });
 
       const auth = useAuthStore();
@@ -106,7 +112,10 @@ describe('Auth Store', () => {
   describe('logout', () => {
     it('clears user, token, and localStorage', async () => {
       mockPost.mockResolvedValueOnce({
-        data: { accessToken: 'a', refreshToken: 'r', expiresIn: 600, user: makeUser() },
+        data: {
+          success: true,
+          data: { accessToken: 'a', refreshToken: 'r', expiresIn: 600, user: makeUser() },
+        },
       });
 
       const auth = useAuthStore();

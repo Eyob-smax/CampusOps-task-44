@@ -11,11 +11,8 @@ import {
 export async function listParcelsHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { shipmentId } = req.query as any;
-    if (!shipmentId) {
-      res.status(400).json({ success: false, error: 'shipmentId query parameter is required', code: 'MISSING_PARAM' });
-      return;
-    }
-    res.json(await listParcels(shipmentId));
+    const data = await listParcels(shipmentId);
+    res.json({ success: true, data });
   } catch (err) {
     next(err);
   }
@@ -23,7 +20,8 @@ export async function listParcelsHandler(req: Request, res: Response, next: Next
 
 export async function getParcelHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    res.json(await getParcelById(req.params.id));
+    const data = await getParcelById(req.params.id);
+    res.json({ success: true, data });
   } catch (err) {
     next(err);
   }
@@ -38,7 +36,8 @@ export async function addParcelHandler(req: Request, res: Response, next: NextFu
     }
     const data    = addParcelSchema.parse(rest);
     const actorId = (req as any).user?.id ?? 'system';
-    res.status(201).json(await addParcel(shipmentId, data, actorId));
+    const created = await addParcel(shipmentId, data, actorId);
+    res.status(201).json({ success: true, data: created });
   } catch (err) {
     next(err);
   }
@@ -48,7 +47,8 @@ export async function updateParcelStatusHandler(req: Request, res: Response, nex
   try {
     const { status } = updateParcelStatusSchema.parse(req.body);
     const actorId    = (req as any).user?.id ?? 'system';
-    res.json(await updateParcelStatus(req.params.id, status, actorId));
+    const data = await updateParcelStatus(req.params.id, status, actorId);
+    res.json({ success: true, data });
   } catch (err) {
     next(err);
   }

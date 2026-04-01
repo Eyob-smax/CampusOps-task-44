@@ -4,10 +4,7 @@ import { searchLogsHandler } from './log.controller';
 
 const router = Router();
 
-// All log routes require authentication
-router.use(authenticate);
-
 // GET /logs — search log files
-router.get('/logs', requirePermission('logs:read'), searchLogsHandler);
+router.get('/logs', authenticate, requirePermission('logs:read'), searchLogsHandler);
 
 export default router;

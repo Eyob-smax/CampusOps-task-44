@@ -4,6 +4,7 @@ import { config } from '../config';
 import type { UserRole, AuthenticatedUser } from '../types';
 import { can, type Permission } from '../lib/permissions';
 import { getRedisClient } from '../lib/redis';
+import { logger } from '../lib/logger';
 
 declare global {
   namespace Express {
@@ -36,10 +37,20 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
         }
         req.user = { id: payload.id, username: payload.username, role: payload.role };
         next();
-      }).catch(() => {
-        // Fail open on Redis error — don't block legitimate traffic
-        req.user = { id: payload.id, username: payload.username, role: payload.role };
-        next();
+      }).catch((err) => {
+        if (config.security.authRedisFailOpen) {
+          logger.error({ msg: 'Auth revocation lookup failed — fail-open mode', err });
+          req.user = { id: payload.id, username: payload.username, role: payload.role };
+          next();
+          return;
+        }
+
+        logger.error({ msg: 'Auth revocation lookup failed — fail-closed mode', err });
+        res.status(503).json({
+          success: false,
+          error: 'Authentication state unavailable',
+          code: 'AUTH_STATE_UNAVAILABLE',
+        });
       });
     } else {
       req.user = { id: payload.id, username: payload.username, role: payload.role };

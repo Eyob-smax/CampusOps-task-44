@@ -11,22 +11,19 @@ import {
 
 const router = Router();
 
-// All threshold routes require authentication
-router.use(authenticate);
-
 // GET /thresholds — list all thresholds
-router.get('/thresholds', requirePermission('alerts:read'), listThresholdsHandler);
+router.get('/thresholds', authenticate, requirePermission('alerts:read'), listThresholdsHandler);
 
 // POST /thresholds — create threshold
-router.post('/thresholds', requirePermission('alerts:manage'), idempotency, createThresholdHandler);
+router.post('/thresholds', authenticate, requirePermission('alerts:manage'), idempotency, createThresholdHandler);
 
 // GET /thresholds/:id — get single threshold
-router.get('/thresholds/:id', requirePermission('alerts:read'), getThresholdByIdHandler);
+router.get('/thresholds/:id', authenticate, requirePermission('alerts:read'), getThresholdByIdHandler);
 
 // PUT /thresholds/:id — update threshold
-router.put('/thresholds/:id', requirePermission('alerts:manage'), idempotency, updateThresholdHandler);
+router.put('/thresholds/:id', authenticate, requirePermission('alerts:manage'), idempotency, updateThresholdHandler);
 
 // DELETE /thresholds/:id — delete threshold
-router.delete('/thresholds/:id', requirePermission('alerts:manage'), deleteThresholdHandler);
+router.delete('/thresholds/:id', authenticate, requirePermission('alerts:manage'), deleteThresholdHandler);
 
 export default router;

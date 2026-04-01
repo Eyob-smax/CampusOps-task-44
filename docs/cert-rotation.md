@@ -1,10 +1,10 @@
-# JWT Secret Rotation Runbook
+# JWT and TLS Rotation Runbook
 
 ## Overview
 
-CampusOps uses JWT (JSON Web Tokens) for authentication, not TLS certificates
-for inter-service communication. This runbook covers how to rotate the
-`JWT_SECRET` environment variable safely with minimal user disruption.
+CampusOps uses JWT (JSON Web Tokens) for authentication and TLS certificates at
+the `reverse-proxy` ingress. This runbook covers how to rotate the
+`JWT_SECRET` and TLS certificate/key with minimal disruption.
 
 ---
 
@@ -111,6 +111,43 @@ If the new secret causes unexpected issues:
 1. Restore the previous `JWT_SECRET` value.
 2. Restart the backend.
 3. Users who logged in with the new secret will need to log in again.
+
+---
+
+## TLS certificate rotation (reverse-proxy)
+
+The reverse proxy serves HTTPS using files at:
+
+- `/etc/nginx/certs/server.crt`
+- `/etc/nginx/certs/server.key`
+
+In Docker Compose, these are persisted in the `tls-certs-data` volume.
+
+### Option A: Replace with managed certificate files
+
+1. Copy the new certificate and private key into the reverse-proxy cert path.
+2. Restart only the reverse proxy:
+
+```bash
+docker compose restart reverse-proxy
+```
+
+### Option B: Regenerate self-signed certificate
+
+If you use the built-in self-signed flow, remove the cert volume and recreate
+the reverse-proxy container so entrypoint regeneration runs again:
+
+```bash
+docker compose down
+docker volume rm campusops-task15-tls-certs-data
+docker compose up -d reverse-proxy
+```
+
+### Verify TLS after rotation
+
+```bash
+curl -k https://localhost/health
+```
 
 ---
 

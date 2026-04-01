@@ -91,11 +91,11 @@ Expected services:
 CampusOps is designed for **air-gapped local network operation**:
 
 - The system is **TLS-first** for LAN traffic.
-- Host port `80` is redirect-only (`http` → `https`).
+- Host port `80` is redirect-only (`http` -> `https`).
 - Host port `443` is the only application ingress for browser/API/socket traffic.
 - `reverse-proxy` uses a self-signed certificate by default for disconnected deployments.
 - All container-to-container traffic is on the internal `campusops-net` Docker bridge — never routed over the LAN.
-- No feature requires internet access at runtime. Carrier sync is simulated internally.
+- No feature requires internet access at runtime.
 
 **Accessing from other LAN machines:**
 
@@ -121,6 +121,12 @@ Default backend environment variables are defined in `backend/Dockerfile`. Overr
 | `DB_NAME`                   | `campusops`                     | Database name                                       |
 | `DB_USER`                   | `campusops`                     | Database user                                       |
 | `REDIS_URL`                 | `redis://redis:6379`            | Redis connection URL                                |
+| `ENFORCE_TLS`               | `true` in production            | Reject non-HTTPS requests (except `/health`)        |
+| `AUTH_REDIS_FAIL_OPEN`      | `false` in production           | Auth revocation lookup behavior on Redis failure    |
+| `IDEMPOTENCY_REDIS_FAIL_OPEN` | `false` in production         | Idempotency behavior on Redis failure               |
+| `CARRIER_SYNC_MODE`         | `connector` in production       | Carrier sync mode: `connector` or `simulation`      |
+| `CARRIER_SYNC_TIMEOUT_MS`   | `5000`                          | Connector request timeout in milliseconds           |
+| `CARRIER_SYNC_ALLOW_SIMULATION_FALLBACK` | `false` in production | Fallback to simulation when connector errors occur  |
 | `STORAGE_PATH`              | `/data/storage`                 | Evidence file storage path inside the container     |
 | `LOG_PATH`                  | `/logs`                         | Log file directory inside the container             |
 | `BACKUP_PATH`               | `/backups`                      | Backup manifest directory inside the container      |
@@ -144,6 +150,7 @@ Secrets (encryption key, DB password, JWT secret) are injected via Docker secret
 | `storage-data` | `/data/storage` (backend) | Evidence image files         |
 | `logs-data`    | `/logs` (backend)         | Daily `YYYY-MM-DD.log` files |
 | `backups-data` | `/backups` (backend)      | Backup manifest JSON files   |
+| `tls-certs-data` | `/etc/nginx/certs` (reverse-proxy) | TLS certificate/key files |
 
 **Inspecting volume location on host:**
 

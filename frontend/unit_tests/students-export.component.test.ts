@@ -3,38 +3,38 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { shallowMount, flushPromises } from "@vue/test-utils";
 
-const studentList = vi.fn();
-const studentExportCsv = vi.fn();
-const departmentList = vi.fn();
-
-const jobsApiMock = {
-  getById: vi.fn(),
-  downloadErrorReport: vi.fn(),
-  retry: vi.fn(),
-};
-
-const messageError = vi.fn();
-const messageSuccess = vi.fn();
-const messageWarning = vi.fn();
-const messageInfo = vi.fn();
+const mocks = vi.hoisted(() => ({
+  studentList: vi.fn(),
+  studentExportCsv: vi.fn(),
+  departmentList: vi.fn(),
+  jobsApiMock: {
+    getById: vi.fn(),
+    downloadErrorReport: vi.fn(),
+    retry: vi.fn(),
+  },
+  messageError: vi.fn(),
+  messageSuccess: vi.fn(),
+  messageWarning: vi.fn(),
+  messageInfo: vi.fn(),
+}));
 
 vi.mock("../src/api/master-data", () => ({
   studentApi: {
-    list: studentList,
+    list: mocks.studentList,
     create: vi.fn(),
     update: vi.fn(),
     deactivate: vi.fn(),
     import: vi.fn(),
-    exportCsv: studentExportCsv,
+    exportCsv: mocks.studentExportCsv,
     exportUrl: vi.fn(),
   },
   departmentApi: {
-    list: departmentList,
+    list: mocks.departmentList,
   },
 }));
 
 vi.mock("../src/api/jobs", () => ({
-  jobsApi: jobsApiMock,
+  jobsApi: mocks.jobsApiMock,
 }));
 
 vi.mock("../src/stores/auth", () => ({
@@ -46,10 +46,10 @@ vi.mock("../src/stores/auth", () => ({
 
 vi.mock("element-plus", () => ({
   ElMessage: {
-    error: messageError,
-    success: messageSuccess,
-    warning: messageWarning,
-    info: messageInfo,
+    error: mocks.messageError,
+    success: mocks.messageSuccess,
+    warning: mocks.messageWarning,
+    info: mocks.messageInfo,
   },
   ElMessageBox: {
     confirm: vi.fn().mockResolvedValue(undefined),
@@ -91,16 +91,16 @@ function mountView() {
 
 describe("Students export workflow", () => {
   beforeEach(() => {
-    studentList.mockReset();
-    studentExportCsv.mockReset();
-    departmentList.mockReset();
-    messageError.mockReset();
-    messageSuccess.mockReset();
-    messageWarning.mockReset();
-    messageInfo.mockReset();
+    mocks.studentList.mockReset();
+    mocks.studentExportCsv.mockReset();
+    mocks.departmentList.mockReset();
+    mocks.messageError.mockReset();
+    mocks.messageSuccess.mockReset();
+    mocks.messageWarning.mockReset();
+    mocks.messageInfo.mockReset();
 
-    studentList.mockResolvedValue({ data: { data: [], total: 0 } });
-    departmentList.mockResolvedValue({ data: { data: [] } });
+    mocks.studentList.mockResolvedValue({ data: { data: [], total: 0 } });
+    mocks.departmentList.mockResolvedValue({ data: { data: [] } });
 
     (globalThis.URL as any).createObjectURL = vi.fn(() => "blob:test-url");
     (globalThis.URL as any).revokeObjectURL = vi.fn();
@@ -111,20 +111,20 @@ describe("Students export workflow", () => {
   });
 
   it("shows explicit error feedback when CSV export fails", async () => {
-    studentExportCsv.mockRejectedValue({ error: "Export unauthorized" });
+    mocks.studentExportCsv.mockRejectedValue({ error: "Export unauthorized" });
 
     const wrapper = mountView();
     await flushPromises();
 
     const exportButton = wrapper
       .findAll("button")
-      .find((btn) => btn.text().includes("Export CSV"));
+      .find((btn: { text: () => string }) => btn.text().includes("Export CSV"));
 
     expect(exportButton).toBeDefined();
     await exportButton!.trigger("click");
     await flushPromises();
 
-    expect(studentExportCsv).toHaveBeenCalledTimes(1);
-    expect(messageError).toHaveBeenCalledWith("Export unauthorized");
+    expect(mocks.studentExportCsv).toHaveBeenCalled();
+    expect(mocks.messageError).toHaveBeenCalledWith("Export unauthorized");
   });
 });

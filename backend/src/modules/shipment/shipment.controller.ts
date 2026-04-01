@@ -16,7 +16,7 @@ const updateStatusSchema = z.object({
 export async function listShipmentsHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { fulfillmentRequestId, carrierId, warehouseId, status, page, limit } = req.query as any;
-    const result = await listShipments({
+    const data = await listShipments({
       fulfillmentRequestId,
       carrierId,
       warehouseId,
@@ -24,7 +24,7 @@ export async function listShipmentsHandler(req: Request, res: Response, next: Ne
       page:  page  ? Number(page)  : undefined,
       limit: limit ? Number(limit) : undefined,
     });
-    res.json(result);
+    res.json({ success: true, data });
   } catch (err) {
     next(err);
   }
@@ -32,7 +32,8 @@ export async function listShipmentsHandler(req: Request, res: Response, next: Ne
 
 export async function getShipmentHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    res.json(await getShipmentById(req.params.id));
+    const data = await getShipmentById(req.params.id);
+    res.json({ success: true, data });
   } catch (err) {
     next(err);
   }
@@ -42,7 +43,8 @@ export async function createShipmentHandler(req: Request, res: Response, next: N
   try {
     const body    = createShipmentSchema.parse(req.body);
     const actorId = (req as any).user?.id ?? 'system';
-    res.status(201).json(await createShipment(body, actorId));
+    const data = await createShipment(body, actorId);
+    res.status(201).json({ success: true, data });
   } catch (err) {
     next(err);
   }
@@ -52,7 +54,8 @@ export async function updateStatusHandler(req: Request, res: Response, next: Nex
   try {
     const { status } = updateStatusSchema.parse(req.body);
     const actorId    = (req as any).user?.id ?? 'system';
-    res.json(await updateShipmentStatus(req.params.id, status, actorId));
+    const data = await updateShipmentStatus(req.params.id, status, actorId);
+    res.json({ success: true, data });
   } catch (err) {
     next(err);
   }
@@ -60,8 +63,8 @@ export async function updateStatusHandler(req: Request, res: Response, next: Nex
 
 export async function triggerSyncHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const result = await triggerCarrierSync(req.params.carrierId);
-    res.json(result);
+    const data = await triggerCarrierSync(req.params.carrierId);
+    res.json({ success: true, data });
   } catch (err) {
     next(err);
   }

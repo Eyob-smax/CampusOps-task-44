@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 
 export const createTierSchema = z.object({
@@ -35,10 +36,32 @@ export async function getTierByName(name: string) {
 }
 
 export async function createTier(data: z.infer<typeof createTierSchema>) {
-  return prisma.membershipTier.create({ data });
+  const parsed = createTierSchema.parse(data);
+  const createData: Prisma.MembershipTierCreateInput = {
+    name: parsed.name,
+    discountPercent: parsed.discountPercent,
+    pointThreshold: parsed.pointThreshold,
+    benefits: parsed.benefits,
+    ...(parsed.isActive !== undefined ? { isActive: parsed.isActive } : {}),
+  };
+
+  return prisma.membershipTier.create({ data: createData });
 }
 
 export async function updateTier(id: string, data: z.infer<typeof updateTierSchema>) {
   await getTierById(id);
-  return prisma.membershipTier.update({ where: { id }, data });
+  const parsed = updateTierSchema.parse(data);
+  const updateData: Prisma.MembershipTierUpdateInput = {
+    ...(parsed.name !== undefined ? { name: parsed.name } : {}),
+    ...(parsed.discountPercent !== undefined
+      ? { discountPercent: parsed.discountPercent }
+      : {}),
+    ...(parsed.pointThreshold !== undefined
+      ? { pointThreshold: parsed.pointThreshold }
+      : {}),
+    ...(parsed.benefits !== undefined ? { benefits: parsed.benefits } : {}),
+    ...(parsed.isActive !== undefined ? { isActive: parsed.isActive } : {}),
+  };
+
+  return prisma.membershipTier.update({ where: { id }, data: updateData });
 }

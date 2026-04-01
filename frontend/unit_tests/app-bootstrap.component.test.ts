@@ -4,14 +4,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { reactive } from 'vue';
 import { shallowMount } from '@vue/test-utils';
 
-const ensureInitialized = vi.fn(async () => {});
-const connectAlertSocket = vi.fn();
-const disconnectAlertSocket = vi.fn();
+const mocks = vi.hoisted(() => ({
+  ensureInitialized: vi.fn(async () => {}),
+  connectAlertSocket: vi.fn(),
+  disconnectAlertSocket: vi.fn(),
+}));
 
 const authStore = reactive({
   isAuthenticated: false,
   accessToken: null as string | null,
-  ensureInitialized,
+  ensureInitialized: mocks.ensureInitialized,
 });
 
 vi.mock('../src/stores/auth', () => ({
@@ -19,17 +21,17 @@ vi.mock('../src/stores/auth', () => ({
 }));
 
 vi.mock('../src/composables/useAlertSocket', () => ({
-  connectAlertSocket,
-  disconnectAlertSocket,
+  connectAlertSocket: mocks.connectAlertSocket,
+  disconnectAlertSocket: mocks.disconnectAlertSocket,
 }));
 
 import App from '../src/App.vue';
 
 describe('App bootstrap auth flow', () => {
   beforeEach(() => {
-    ensureInitialized.mockClear();
-    connectAlertSocket.mockClear();
-    disconnectAlertSocket.mockClear();
+    mocks.ensureInitialized.mockClear();
+    mocks.connectAlertSocket.mockClear();
+    mocks.disconnectAlertSocket.mockClear();
     authStore.isAuthenticated = false;
     authStore.accessToken = null;
   });
@@ -46,7 +48,7 @@ describe('App bootstrap auth flow', () => {
     });
 
     await Promise.resolve();
-    expect(ensureInitialized).toHaveBeenCalledTimes(1);
+    expect(mocks.ensureInitialized).toHaveBeenCalledTimes(1);
   });
 
   it('connects alerts socket once authenticated token is available', async () => {
@@ -64,7 +66,7 @@ describe('App bootstrap auth flow', () => {
     });
 
     await Promise.resolve();
-    expect(connectAlertSocket).toHaveBeenCalledWith(
+    expect(mocks.connectAlertSocket).toHaveBeenCalledWith(
       'restored-token',
       expect.any(Function),
     );

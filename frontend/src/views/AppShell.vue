@@ -84,17 +84,23 @@
           >
         </el-sub-menu>
 
-        <el-menu-item index="/fulfillment">
+        <el-menu-item
+          index="/fulfillment"
+          v-if="hasRole(FULFILLMENT_READ_ROLES)"
+        >
           <el-icon><ShoppingCart /></el-icon>
           <template #title>Fulfillment</template>
         </el-menu-item>
 
-        <el-menu-item index="/shipments">
+        <el-menu-item index="/shipments" v-if="hasRole(SHIPMENT_READ_ROLES)">
           <el-icon><Van /></el-icon>
           <template #title>Shipments</template>
         </el-menu-item>
 
-        <el-menu-item index="/after-sales">
+        <el-menu-item
+          index="/after-sales"
+          v-if="hasRole(AFTER_SALES_READ_ROLES)"
+        >
           <el-icon><Service /></el-icon>
           <template #title>After-Sales</template>
         </el-menu-item>
@@ -203,6 +209,11 @@ import {
 } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import type { UserRole } from "@/types";
+import {
+  FULFILLMENT_READ_ROLES,
+  SHIPMENT_READ_ROLES,
+  AFTER_SALES_READ_ROLES,
+} from "@/router/access-policy";
 
 const auth = useAuthStore();
 const route = useRoute();

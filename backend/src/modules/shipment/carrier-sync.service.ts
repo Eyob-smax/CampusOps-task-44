@@ -1,8 +1,10 @@
+import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { decrypt } from '../../lib/encryption';
 import { updateParcelStatus } from './parcel.service';
 import { logger } from '../../lib/logger';
 import { getCircuitBreaker } from '../../lib/circuit-breaker';
+import { config } from '../../config';
 
 // ---- Types ----
 
@@ -18,7 +20,45 @@ interface ParcelUpdate {
   trackingEvents: TrackingEvent[];
 }
 
-// ---- Simulate carrier response (pure function, no network calls) ----
+const shipmentStatusSchema = z.enum([
+  'pending',
+  'in_transit',
+  'out_for_delivery',
+  'delivered',
+  'exception',
+  'returned',
+]);
+
+const connectorEventSchema = z.object({
+  timestamp: z.string().datetime().optional(),
+  description: z.string().min(1),
+  location: z.string().min(1).optional(),
+});
+
+const connectorParcelUpdateSchema = z
+  .object({
+    parcelId: z.string().uuid().optional(),
+    trackingNumber: z.string().min(1).optional(),
+    status: shipmentStatusSchema,
+    events: z.array(connectorEventSchema).optional(),
+  })
+  .refine((entry) => !!entry.parcelId || !!entry.trackingNumber, {
+    message: 'Connector update must include parcelId or trackingNumber',
+  });
+
+const connectorSyncResponseSchema = z.object({
+  updates: z.array(connectorParcelUpdateSchema),
+});
+
+type SyncParcel = {
+  id: string;
+  shipmentId: string;
+  trackingNumber: string;
+  createdAt: Date;
+  status: string;
+};
+
+// ---- Simulate carrier response (fallback mode) ----
 
 /**
  * Generates deterministic fake status updates based on parcel age.
@@ -111,6 +151,118 @@ export class CarrierConnector {
     return breaker.fire();
   }
 
+  private async fetchConnectorUpdates(
+    carrier: { id: string; connectorUrl: string; apiKeyEncrypted: string },
+    parcels: SyncParcel[],
+  ): Promise<ParcelUpdate[]> {
+    const apiKey = decrypt(carrier.apiKeyEncrypted);
+    const endpoint = `${carrier.connectorUrl.replace(/\/+$/, '')}/sync`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), config.shipmentSync.connectorTimeoutMs);
+
+    let rawBody: unknown;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Api-Key': apiKey,
+        },
+        body: JSON.stringify({
+          carrierId: carrier.id,
+          parcels: parcels.map((p) => ({
+            parcelId: p.id,
+            trackingNumber: p.trackingNumber,
+            status: p.status,
+            createdAt: p.createdAt.toISOString(),
+          })),
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Connector responded ${response.status}: ${errorBody || response.statusText}`);
+      }
+
+      rawBody = await response.json();
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    const parsed = connectorSyncResponseSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      throw new Error(`Connector response validation failed: ${parsed.error.issues[0]?.message ?? 'unknown format'}`);
+    }
+
+    const byId = new Map(parcels.map((p) => [p.id, p]));
+    const byTracking = new Map(parcels.map((p) => [p.trackingNumber, p]));
+
+    const updates: ParcelUpdate[] = [];
+    for (const entry of parsed.data.updates) {
+      const parcel =
+        (entry.parcelId ? byId.get(entry.parcelId) : undefined) ??
+        (entry.trackingNumber ? byTracking.get(entry.trackingNumber) : undefined);
+
+      if (!parcel) {
+        logger.warn({
+          msg: 'Connector update skipped for unknown parcel',
+          carrierId: carrier.id,
+          parcelId: entry.parcelId,
+          trackingNumber: entry.trackingNumber,
+        });
+        continue;
+      }
+
+      if (entry.status === parcel.status) {
+        continue;
+      }
+
+      updates.push({
+        parcelId: parcel.id,
+        newStatus: entry.status,
+        trackingEvents: (entry.events ?? []).map((event) => ({
+          timestamp: event.timestamp ?? new Date().toISOString(),
+          description: event.description,
+          ...(event.location ? { location: event.location } : {}),
+        })),
+      });
+    }
+
+    return updates;
+  }
+
+  private async resolveCarrierUpdates(
+    carrier: { id: string; connectorUrl: string; apiKeyEncrypted: string },
+    parcels: SyncParcel[],
+    now: Date,
+  ): Promise<ParcelUpdate[]> {
+    const mode = String(config.shipmentSync.mode).toLowerCase();
+    const useConnectorMode = mode === 'connector';
+
+    if (useConnectorMode) {
+      try {
+        return await this.fetchConnectorUpdates(carrier, parcels);
+      } catch (err) {
+        if (!config.shipmentSync.allowSimulationFallback) {
+          throw err;
+        }
+
+        logger.warn({
+          msg: 'Carrier connector sync failed; using simulation fallback',
+          carrierId: carrier.id,
+          err,
+        });
+      }
+    }
+
+    return simulateCarrierResponse(
+      parcels.map((p) => ({ id: p.id, createdAt: p.createdAt, status: p.status })),
+      now,
+    );
+  }
+
   private async _doSync(carrierId: string): Promise<{ updated: number; errors: number }> {
     // Fetch carrier with decrypted API key
     const carrier = await prisma.carrier.findUnique({ where: { id: carrierId } });
@@ -119,15 +271,6 @@ export class CarrierConnector {
       err.status = 404;
       err.code   = 'CARRIER_NOT_FOUND';
       throw err;
-    }
-
-    // Decrypt API key (simulated — we do not make actual HTTP requests)
-    let _apiKey: string;
-    try {
-      _apiKey = decrypt(carrier.apiKeyEncrypted);
-    } catch (e) {
-      logger.warn({ msg: 'Failed to decrypt carrier API key', carrierId });
-      _apiKey = '';
     }
 
     // Fetch all parcels for this carrier's shipments
@@ -142,11 +285,8 @@ export class CarrierConnector {
       return { updated: 0, errors: 0 };
     }
 
-    const now     = new Date();
-    const updates = simulateCarrierResponse(
-      parcels.map(p => ({ id: p.id, createdAt: p.createdAt, status: p.status })),
-      now,
-    );
+    const now = new Date();
+    const updates = await this.resolveCarrierUpdates(carrier, parcels, now);
 
     let updated = 0;
     let errors  = 0;

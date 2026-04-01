@@ -14,7 +14,12 @@
           />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" :loading="lookupLoading" :disabled="!studentId.trim()" @click="lookupStudent">
+          <el-button
+            type="primary"
+            :loading="lookupLoading"
+            :disabled="!studentId.trim()"
+            @click="lookupStudent"
+          >
             Look Up
           </el-button>
         </el-form-item>
@@ -54,29 +59,37 @@
         </el-table-column>
         <el-table-column label="Amount" width="120">
           <template #default="{ row }">
-            {{ row.amountEncrypted }}
+            {{ formatAmountCell(row.amount, row.amountEncrypted) }}
           </template>
         </el-table-column>
         <el-table-column label="Balance After" width="130">
           <template #default="{ row }">
-            {{ row.balanceAfterEncrypted }}
+            {{ formatAmountCell(row.balanceAfter, row.balanceAfterEncrypted) }}
           </template>
         </el-table-column>
         <el-table-column label="Note / Reference" min-width="180">
           <template #default="{ row }">
-            {{ row.note || row.referenceId || '—' }}
+            {{ row.note || row.referenceId || "—" }}
           </template>
         </el-table-column>
         <el-table-column label="Actions" width="100" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" text type="primary" @click="openReceipt(row.id)">
+            <el-button
+              size="small"
+              text
+              type="primary"
+              @click="openReceipt(row.id)"
+            >
               Receipt
             </el-button>
           </template>
         </el-table-column>
       </el-table>
 
-      <el-empty v-if="!txLoading && transactions.length === 0" description="No transactions found" />
+      <el-empty
+        v-if="!txLoading && transactions.length === 0"
+        description="No transactions found"
+      />
 
       <div v-if="txTotal > txLimit" class="pagination-row">
         <el-pagination
@@ -93,7 +106,12 @@
     <el-dialog v-model="topUpDialog" title="Top Up Balance" width="420px">
       <el-form :model="topUpForm" label-width="80px">
         <el-form-item label="Amount" required>
-          <el-input-number v-model="topUpForm.amount" :min="0.01" :precision="2" style="width: 100%" />
+          <el-input-number
+            v-model="topUpForm.amount"
+            :min="0.01"
+            :precision="2"
+            style="width: 100%"
+          />
         </el-form-item>
         <el-form-item label="Note">
           <el-input v-model="topUpForm.note" placeholder="Optional note" />
@@ -101,7 +119,12 @@
       </el-form>
       <template #footer>
         <el-button @click="topUpDialog = false">Cancel</el-button>
-        <el-button type="primary" :loading="actionLoading" :disabled="!topUpForm.amount || topUpForm.amount <= 0" @click="submitTopUp">
+        <el-button
+          type="primary"
+          :loading="actionLoading"
+          :disabled="!topUpForm.amount || topUpForm.amount <= 0"
+          @click="submitTopUp"
+        >
           Confirm Top Up
         </el-button>
       </template>
@@ -111,13 +134,24 @@
     <el-dialog v-model="spendDialog" title="Spend from Balance" width="420px">
       <el-form :model="spendForm" label-width="110px">
         <el-form-item label="Amount" required>
-          <el-input-number v-model="spendForm.amount" :min="0.01" :precision="2" style="width: 100%" />
+          <el-input-number
+            v-model="spendForm.amount"
+            :min="0.01"
+            :precision="2"
+            style="width: 100%"
+          />
         </el-form-item>
         <el-form-item label="Reference ID" required>
-          <el-input v-model="spendForm.referenceId" placeholder="e.g. order ID or invoice number" />
+          <el-input
+            v-model="spendForm.referenceId"
+            placeholder="e.g. order ID or invoice number"
+          />
         </el-form-item>
         <el-form-item label="Reference Type" required>
-          <el-input v-model="spendForm.referenceType" placeholder="e.g. order, fee, purchase" />
+          <el-input
+            v-model="spendForm.referenceType"
+            placeholder="e.g. order, fee, purchase"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -125,7 +159,12 @@
         <el-button
           type="primary"
           :loading="actionLoading"
-          :disabled="!spendForm.amount || spendForm.amount <= 0 || !spendForm.referenceId.trim() || !spendForm.referenceType.trim()"
+          :disabled="
+            !spendForm.amount ||
+            spendForm.amount <= 0 ||
+            !spendForm.referenceId.trim() ||
+            !spendForm.referenceType.trim()
+          "
           @click="submitSpend"
         >
           Confirm Spend
@@ -134,27 +173,47 @@
     </el-dialog>
 
     <!-- Receipt Dialog -->
-    <el-dialog v-model="receiptDialog" title="Transaction Receipt" width="520px">
+    <el-dialog
+      v-model="receiptDialog"
+      title="Transaction Receipt"
+      width="520px"
+    >
       <div v-loading="receiptLoading">
-        <div v-if="receiptContent" id="printable-receipt" class="receipt-content" v-html="receiptContent" />
-        <el-empty v-else-if="!receiptLoading" description="Receipt not available" />
+        <div
+          v-if="receiptContent"
+          id="printable-receipt"
+          class="receipt-content"
+          v-html="receiptContent"
+        />
+        <el-empty
+          v-else-if="!receiptLoading"
+          description="Receipt not available"
+        />
       </div>
       <template #footer>
         <el-button @click="receiptDialog = false">Close</el-button>
-        <el-button type="primary" :disabled="!receiptContent" @click="printReceipt">Print</el-button>
+        <el-button
+          type="primary"
+          :disabled="!receiptContent"
+          @click="printReceipt"
+          >Print</el-button
+        >
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import { ElMessage } from 'element-plus';
-import dayjs from 'dayjs';
-import { storedValueApi, type StoredValueTransaction } from '../../api/membership';
+import { ref } from "vue";
+import { ElMessage } from "element-plus";
+import dayjs from "dayjs";
+import {
+  storedValueApi,
+  type StoredValueTransaction,
+} from "../../api/membership";
 
 // --- Student Lookup ---
-const studentId = ref('');
+const studentId = ref("");
 const lookupLoading = ref(false);
 const balanceLoaded = ref(false);
 const balance = ref(0);
@@ -166,12 +225,13 @@ async function lookupStudent() {
   balanceLoaded.value = false;
   try {
     const res = await storedValueApi.getBalance(id);
-    balance.value = res.data.data.balance;
+    const payload = (res.data as any).data ?? res.data;
+    balance.value = payload.balance;
     balanceLoaded.value = true;
     txPage.value = 1;
     await loadTransactions();
   } catch (e: any) {
-    ElMessage.error(e.response?.data?.error ?? 'Failed to look up student');
+    ElMessage.error(e.response?.data?.error ?? "Failed to look up student");
   } finally {
     lookupLoading.value = false;
   }
@@ -189,12 +249,15 @@ async function loadTransactions() {
   if (!id) return;
   txLoading.value = true;
   try {
-    const res = await storedValueApi.listTransactions(id, { page: txPage.value, limit: txLimit });
-    const payload = res.data.data;
+    const res = await storedValueApi.listTransactions(id, {
+      page: txPage.value,
+      limit: txLimit,
+    });
+    const payload = (res.data as any).data ?? res.data;
     transactions.value = payload.items;
     txTotal.value = payload.total;
   } catch (e: any) {
-    ElMessage.error(e.response?.data?.error ?? 'Failed to load transactions');
+    ElMessage.error(e.response?.data?.error ?? "Failed to load transactions");
   } finally {
     txLoading.value = false;
   }
@@ -202,28 +265,31 @@ async function loadTransactions() {
 
 // --- Top Up ---
 const topUpDialog = ref(false);
-const topUpForm = ref({ amount: 0, note: '' });
+const topUpForm = ref({ amount: 0, note: "" });
 const actionLoading = ref(false);
 
 function openTopUp() {
-  topUpForm.value = { amount: 0, note: '' };
+  topUpForm.value = { amount: 0, note: "" };
   topUpDialog.value = true;
 }
 
 async function submitTopUp() {
   actionLoading.value = true;
   try {
-    const payload: { amount: number; note?: string } = { amount: topUpForm.value.amount };
+    const payload: { amount: number; note?: string } = {
+      amount: topUpForm.value.amount,
+    };
     if (topUpForm.value.note.trim()) {
       payload.note = topUpForm.value.note.trim();
     }
     const res = await storedValueApi.topUp(studentId.value.trim(), payload);
-    balance.value = res.data.data.balance;
-    ElMessage.success('Top up successful');
+    const result = (res.data as any).data ?? res.data;
+    balance.value = result.balance;
+    ElMessage.success("Top up successful");
     topUpDialog.value = false;
     await loadTransactions();
   } catch (e: any) {
-    ElMessage.error(e.response?.data?.error ?? 'Top up failed');
+    ElMessage.error(e.response?.data?.error ?? "Top up failed");
   } finally {
     actionLoading.value = false;
   }
@@ -231,10 +297,10 @@ async function submitTopUp() {
 
 // --- Spend ---
 const spendDialog = ref(false);
-const spendForm = ref({ amount: 0, referenceId: '', referenceType: '' });
+const spendForm = ref({ amount: 0, referenceId: "", referenceType: "" });
 
 function openSpend() {
-  spendForm.value = { amount: 0, referenceId: '', referenceType: '' };
+  spendForm.value = { amount: 0, referenceId: "", referenceType: "" };
   spendDialog.value = true;
 }
 
@@ -246,12 +312,13 @@ async function submitSpend() {
       referenceId: spendForm.value.referenceId.trim(),
       referenceType: spendForm.value.referenceType.trim(),
     });
-    balance.value = res.data.data.balance;
-    ElMessage.success('Spend recorded');
+    const result = (res.data as any).data ?? res.data;
+    balance.value = result.balance;
+    ElMessage.success("Spend recorded");
     spendDialog.value = false;
     await loadTransactions();
   } catch (e: any) {
-    ElMessage.error(e.response?.data?.error ?? 'Spend failed');
+    ElMessage.error(e.response?.data?.error ?? "Spend failed");
   } finally {
     actionLoading.value = false;
   }
@@ -260,17 +327,18 @@ async function submitSpend() {
 // --- Receipt ---
 const receiptDialog = ref(false);
 const receiptLoading = ref(false);
-const receiptContent = ref('');
+const receiptContent = ref("");
 
 async function openReceipt(transactionId: string) {
-  receiptContent.value = '';
+  receiptContent.value = "";
   receiptDialog.value = true;
   receiptLoading.value = true;
   try {
     const res = await storedValueApi.getReceipt(transactionId);
-    receiptContent.value = res.data.data;
+    const payload = (res.data as any).data ?? res.data;
+    receiptContent.value = typeof payload === "string" ? payload : "";
   } catch (e: any) {
-    ElMessage.error(e.response?.data?.error ?? 'Failed to load receipt');
+    ElMessage.error(e.response?.data?.error ?? "Failed to load receipt");
   } finally {
     receiptLoading.value = false;
   }
@@ -282,25 +350,49 @@ function printReceipt() {
 
 // --- Helpers ---
 function formatDate(dateStr: string): string {
-  return dayjs(dateStr).format('YYYY-MM-DD HH:mm');
+  return dayjs(dateStr).format("YYYY-MM-DD HH:mm");
 }
 
-function typeTagColor(type: string): '' | 'success' | 'warning' | 'danger' {
+function typeTagColor(type: string): "" | "success" | "warning" | "danger" {
   switch (type) {
-    case 'top_up': return 'success';
-    case 'spend': return 'warning';
-    case 'refund': return 'danger';
-    default: return '';
+    case "top_up":
+      return "success";
+    case "spend":
+      return "warning";
+    case "refund":
+      return "danger";
+    default:
+      return "";
   }
 }
 
 function typeLabel(type: string): string {
   switch (type) {
-    case 'top_up': return 'Top Up';
-    case 'spend': return 'Spend';
-    case 'refund': return 'Refund';
-    default: return type;
+    case "top_up":
+      return "Top Up";
+    case "spend":
+      return "Spend";
+    case "refund":
+      return "Refund";
+    default:
+      return type;
   }
+}
+
+function formatAmountCell(
+  displayAmount?: number,
+  encryptedAmount?: string,
+): string {
+  if (typeof displayAmount === "number" && Number.isFinite(displayAmount)) {
+    return `$${displayAmount.toFixed(2)}`;
+  }
+
+  const fallback = Number(encryptedAmount);
+  if (Number.isFinite(fallback)) {
+    return `$${fallback.toFixed(2)}`;
+  }
+
+  return "—";
 }
 </script>
 

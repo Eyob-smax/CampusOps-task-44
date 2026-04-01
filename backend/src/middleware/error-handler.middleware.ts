@@ -82,6 +82,39 @@ export function errorHandlerMiddleware(
     return;
   }
 
+  // Legacy shaped errors (e.g. thrown with { status, code } or { statusCode, code })
+  if (isObject(err)) {
+    const status =
+      typeof (err as Record<string, unknown>).status === 'number'
+        ? ((err as Record<string, unknown>).status as number)
+        : typeof (err as Record<string, unknown>).statusCode === 'number'
+          ? ((err as Record<string, unknown>).statusCode as number)
+          : undefined;
+
+    if (status !== undefined) {
+      if (status >= 500) {
+        logger.error({ msg: 'Legacy application error', err, correlationId });
+      }
+
+      const message =
+        typeof (err as Record<string, unknown>).message === 'string'
+          ? ((err as Record<string, unknown>).message as string)
+          : 'Request failed';
+      const code =
+        typeof (err as Record<string, unknown>).code === 'string'
+          ? ((err as Record<string, unknown>).code as string)
+          : undefined;
+
+      res.status(status).json({
+        success: false,
+        error: message,
+        code,
+        correlationId,
+      });
+      return;
+    }
+  }
+
   // Prisma unique constraint violation
   if (isObject(err) && (err as Record<string, unknown>).code === 'P2002') {
     const meta = (err as Record<string, unknown>).meta as Record<string, unknown> | undefined;

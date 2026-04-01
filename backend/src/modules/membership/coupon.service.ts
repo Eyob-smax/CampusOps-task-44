@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 
 export const createCouponSchema = z.object({
@@ -42,12 +43,45 @@ export async function getCouponById(id: string) {
 }
 
 export async function createCoupon(data: z.infer<typeof createCouponSchema>) {
-  return prisma.coupon.create({ data });
+  const parsed = createCouponSchema.parse(data);
+  const createData: Prisma.CouponCreateInput = {
+    code: parsed.code,
+    discountType: parsed.discountType,
+    discountValue: parsed.discountValue,
+    ...(parsed.minimumOrderValue !== undefined
+      ? { minimumOrderValue: parsed.minimumOrderValue }
+      : {}),
+    ...(parsed.isSingleUse !== undefined ? { isSingleUse: parsed.isSingleUse } : {}),
+    ...(parsed.maxUsage !== undefined ? { maxUsage: parsed.maxUsage } : {}),
+    ...(parsed.expiresAt !== undefined ? { expiresAt: parsed.expiresAt } : {}),
+    ...(parsed.tierId !== undefined ? { tier: { connect: { id: parsed.tierId } } } : {}),
+  };
+
+  return prisma.coupon.create({ data: createData });
 }
 
 export async function updateCoupon(id: string, data: z.infer<typeof updateCouponSchema>) {
   await getCouponById(id);
-  return prisma.coupon.update({ where: { id }, data });
+  const parsed = updateCouponSchema.parse(data);
+  const updateData: Prisma.CouponUpdateInput = {
+    ...(parsed.code !== undefined ? { code: parsed.code } : {}),
+    ...(parsed.discountType !== undefined ? { discountType: parsed.discountType } : {}),
+    ...(parsed.discountValue !== undefined ? { discountValue: parsed.discountValue } : {}),
+    ...(parsed.minimumOrderValue !== undefined
+      ? { minimumOrderValue: parsed.minimumOrderValue }
+      : {}),
+    ...(parsed.isSingleUse !== undefined ? { isSingleUse: parsed.isSingleUse } : {}),
+    ...(parsed.maxUsage !== undefined ? { maxUsage: parsed.maxUsage } : {}),
+    ...(parsed.expiresAt !== undefined ? { expiresAt: parsed.expiresAt } : {}),
+    ...(parsed.isActive !== undefined ? { isActive: parsed.isActive } : {}),
+    ...(parsed.tierId !== undefined
+      ? parsed.tierId === null
+        ? { tier: { disconnect: true } }
+        : { tier: { connect: { id: parsed.tierId } } }
+      : {}),
+  };
+
+  return prisma.coupon.update({ where: { id }, data: updateData });
 }
 
 export async function validateCoupon(

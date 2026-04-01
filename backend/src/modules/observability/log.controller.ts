@@ -16,7 +16,7 @@ export async function searchLogsHandler(req: Request, res: Response, next: NextF
       limit,
     } = req.query as Record<string, string | undefined>;
 
-    const result = await searchLogs({
+    const data = await searchLogs({
       service,
       severity,
       correlationId,
@@ -29,7 +29,7 @@ export async function searchLogsHandler(req: Request, res: Response, next: NextF
       limit: limit ? parseInt(limit, 10) : undefined,
     });
 
-    res.json(result);
+    res.json({ success: true, data });
   } catch (err) {
     next(err);
   }

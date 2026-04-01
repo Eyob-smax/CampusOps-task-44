@@ -9,7 +9,7 @@ import {
 export async function getLatestMetricsHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const metrics = await getLatestMetrics();
-    res.json({ data: metrics });
+    res.json({ success: true, data: metrics });
   } catch (err) {
     next(err);
   }
@@ -25,7 +25,7 @@ export async function getMetricHistoryHandler(req: Request, res: Response, next:
       to,
       limit ? parseInt(limit, 10) : undefined,
     );
-    res.json({ data: history });
+    res.json({ success: true, data: history });
   } catch (err) {
     next(err);
   }
@@ -35,14 +35,14 @@ export async function listAlertHistoryHandler(req: Request, res: Response, next:
   try {
     const { acknowledged, from, to, page, limit } = req.query as Record<string, string | undefined>;
 
-    const result = await listAlertHistory({
+    const data = await listAlertHistory({
       acknowledged: acknowledged !== undefined ? acknowledged === 'true' : undefined,
       from,
       to,
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
     });
-    res.json(result);
+    res.json({ success: true, data });
   } catch (err) {
     next(err);
   }
@@ -53,7 +53,7 @@ export async function acknowledgeAlertHandler(req: Request, res: Response, next:
     const { id } = req.params;
     const actorId = (req as any).user?.id ?? 'unknown';
     const updated = await acknowledgeAlert(id, actorId);
-    res.json({ data: updated });
+    res.json({ success: true, data: updated });
   } catch (err) {
     next(err);
   }

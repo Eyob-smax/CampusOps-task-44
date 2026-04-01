@@ -17,18 +17,20 @@ export const updateParcelStatusSchema = z.object({
 
 // ---- Service functions ----
 
-export async function listParcels(shipmentId: string) {
-  // Validate shipment exists
-  const shipment = await prisma.shipment.findUnique({ where: { id: shipmentId } });
-  if (!shipment) {
-    const err: any = new Error('Shipment not found');
-    err.status = 404;
-    err.code   = 'SHIPMENT_NOT_FOUND';
-    throw err;
+export async function listParcels(shipmentId?: string) {
+  if (shipmentId) {
+    // Validate shipment exists for scoped queries
+    const shipment = await prisma.shipment.findUnique({ where: { id: shipmentId } });
+    if (!shipment) {
+      const err: any = new Error('Shipment not found');
+      err.status = 404;
+      err.code   = 'SHIPMENT_NOT_FOUND';
+      throw err;
+    }
   }
 
   return prisma.parcel.findMany({
-    where:   { shipmentId },
+    where: shipmentId ? { shipmentId } : undefined,
     orderBy: { createdAt: 'asc' },
   });
 }

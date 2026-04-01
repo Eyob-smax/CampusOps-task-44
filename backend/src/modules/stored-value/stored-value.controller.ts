@@ -1,12 +1,13 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from "express";
 import {
   getBalance,
   topUp,
   spend,
   listTransactions,
   generateReceiptText,
-} from './stored-value.service';
-import { z } from 'zod';
+} from "./stored-value.service";
+import { z } from "zod";
+import { decryptAmount } from "../../lib/encryption";
 
 const topUpSchema = z.object({
   amount: z.number().positive().max(10000),
@@ -19,43 +20,105 @@ const spendSchema = z.object({
   referenceType: z.string().min(1),
 });
 
-export async function getBalanceHandler(req: Request, res: Response, next: NextFunction) {
+export async function getBalanceHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
   try {
     const balance = await getBalance(req.params.studentId);
-    res.json({ balance });
-  } catch (err) { next(err); }
+    // Keep legacy shape while providing standardized envelope.
+    res.json({ success: true, data: { balance }, balance });
+  } catch (err) {
+    next(err);
+  }
 }
 
-export async function topUpHandler(req: Request, res: Response, next: NextFunction) {
+export async function topUpHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
   try {
     const body = topUpSchema.parse(req.body);
-    const actorId = (req as any).user?.id ?? 'system';
-    res.status(201).json(await topUp(req.params.studentId, body.amount, actorId, body.note));
-  } catch (err) { next(err); }
+    const actorId = (req as any).user?.id ?? "system";
+    const data = await topUp(
+      req.params.studentId,
+      body.amount,
+      actorId,
+      body.note,
+    );
+    // Keep legacy shape while providing standardized envelope.
+    res.status(201).json({ success: true, data, ...data });
+  } catch (err) {
+    next(err);
+  }
 }
 
-export async function spendHandler(req: Request, res: Response, next: NextFunction) {
+export async function spendHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
   try {
     const body = spendSchema.parse(req.body);
-    const actorId = (req as any).user?.id ?? 'system';
-    res.json(await spend(req.params.studentId, body.amount, body.referenceId, body.referenceType, actorId));
-  } catch (err) { next(err); }
+    const actorId = (req as any).user?.id ?? "system";
+    const data = await spend(
+      req.params.studentId,
+      body.amount,
+      body.referenceId,
+      body.referenceType,
+      actorId,
+    );
+    // Keep legacy shape while providing standardized envelope.
+    res.json({ success: true, data, ...data });
+  } catch (err) {
+    next(err);
+  }
 }
 
-export async function listTransactionsHandler(req: Request, res: Response, next: NextFunction) {
+export async function listTransactionsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
   try {
     const { page, limit, type } = req.query as any;
-    res.json(await listTransactions(req.params.studentId, {
+    const result = await listTransactions(req.params.studentId, {
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
       type,
+    });
+
+    const items = result.items.map((item) => ({
+      ...item,
+      amount: decryptAmount(item.amountEncrypted),
+      balanceAfter: decryptAmount(item.balanceAfterEncrypted),
     }));
-  } catch (err) { next(err); }
+
+    const data = {
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      items,
+    };
+
+    // Keep legacy shape while providing standardized envelope.
+    res.json({ success: true, data, ...data });
+  } catch (err) {
+    next(err);
+  }
 }
 
-export async function getReceiptHandler(req: Request, res: Response, next: NextFunction) {
+export async function getReceiptHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
   try {
     const text = await generateReceiptText(req.params.id);
-    res.type('text/plain').send(text);
-  } catch (err) { next(err); }
+    res.type("text/plain").send(text);
+  } catch (err) {
+    next(err);
+  }
 }
