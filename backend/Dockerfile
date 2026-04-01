@@ -1,5 +1,7 @@
 FROM node:18-alpine AS builder
 
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 COPY package*.json ./
@@ -19,6 +21,8 @@ RUN npm run build
 # ============================================================
 FROM node:18-alpine AS production
 
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -27,10 +31,15 @@ ENV DB_HOST=db
 ENV DB_PORT=3306
 ENV DB_NAME=campusops
 ENV DB_USER=campusops
+ENV DB_PASSWORD=CHANGE_ME_DB_PASSWORD
+ENV JWT_SECRET=CHANGE_ME_JWT_SECRET
+ENV ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000
 ENV REDIS_URL=redis://redis:6379
 ENV STORAGE_PATH=/data/storage
 ENV LOG_PATH=/logs
 ENV BACKUP_PATH=/backups
+ENV LOG_LEVEL=info
+ENV PRISMA_QUERY_ENGINE_LIBRARY=/app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
 ENV TZ=America/New_York
 ENV SEED_ADMIN_PASSWORD=CHANGE_ME_ADMIN_PASSWORD
 ENV SEED_OPS_MANAGER_PASSWORD=CHANGE_ME_OPS_PASSWORD
@@ -53,7 +62,9 @@ RUN mkdir -p /data/storage /logs /backups
 
 EXPOSE 3000
 
+ENTRYPOINT ["/docker-entrypoint.sh"]
+
 HEALTHCHECK --interval=15s --timeout=5s --retries=5 --start-period=45s \
   CMD wget -qO- http://localhost:3000/health || exit 1
 
-CMD ["node", "dist/server.js"]
+CMD ["node", "dist/src/server.js"]

@@ -275,17 +275,36 @@ async function doDeactivate(s: Student) {
 }
 
 // ---- Export ----
-function doExport() {
-  const token = localStorage.getItem('access_token') ?? '';
-  fetch(studentApi.exportUrl(), { headers: { Authorization: `Bearer ${token}` } })
-    .then(r => r.blob())
-    .then(blob => {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `students-${Date.now()}.csv`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    });
+async function doExport() {
+  try {
+    const blob = await studentApi.exportCsv() as unknown as Blob;
+    if (!(blob instanceof Blob)) {
+      throw new Error('Unexpected export response');
+    }
+
+    // Some servers may still respond with JSON error payloads as blobs.
+    if (blob.type.includes('application/json')) {
+      const text = await blob.text();
+      let parsedError = 'Failed to export students';
+      try {
+        const parsed = JSON.parse(text) as { error?: string };
+        parsedError = parsed.error ?? parsedError;
+      } catch {
+        // Keep default parsedError
+      }
+      throw new Error(parsedError);
+    }
+
+    const fileUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = fileUrl;
+    a.download = `students-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(fileUrl);
+  } catch (err) {
+    const error = err as { error?: string; message?: string };
+    ElMessage.error(error.error ?? error.message ?? 'Failed to export students');
+  }
 }
 
 // ---- Import (background job with polling) ----

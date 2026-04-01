@@ -1,6 +1,7 @@
-import { prisma } from '../../lib/prisma';
-import { writeAuditEntry } from '../admin/audit.service';
-import { z } from 'zod';
+import type { Prisma } from "@prisma/client";
+import { prisma } from "../../lib/prisma";
+import { writeAuditEntry } from "../admin/audit.service";
+import { z } from "zod";
 
 export const createCourseSchema = z.object({
   code: z.string().min(1).max(20).trim().toUpperCase(),
@@ -23,10 +24,10 @@ export async function listCourses(departmentId?: string, activeOnly = false) {
   return prisma.course.findMany({
     where: {
       ...(departmentId && { departmentId }),
-      ...(activeOnly   && { isActive: true }),
+      ...(activeOnly && { isActive: true }),
     },
     include: { department: { select: { name: true, code: true } } },
-    orderBy: { code: 'asc' },
+    orderBy: { code: "asc" },
   });
 }
 
@@ -38,35 +39,62 @@ export async function getCourseById(id: string) {
 }
 
 export async function createCourse(dto: CreateCourseDto, actorId: string) {
-  const course = await prisma.course.create({ data: dto });
-  await writeAuditEntry(actorId, 'course:created', 'course', course.id, { code: dto.code, name: dto.name });
+  const payload = createCourseSchema.parse(dto);
+  const data: Prisma.CourseUncheckedCreateInput = {
+    code: payload.code,
+    name: payload.name,
+    departmentId: payload.departmentId,
+    isActive: payload.isActive ?? true,
+  };
+  const course = await prisma.course.create({ data });
+  await writeAuditEntry(actorId, "course:created", "course", course.id, {
+    code: dto.code,
+    name: dto.name,
+  });
   return course;
 }
 
-export async function updateCourse(id: string, dto: UpdateCourseDto, actorId: string) {
-  const course = await prisma.course.update({ where: { id }, data: dto });
-  await writeAuditEntry(actorId, 'course:updated', 'course', id, { changes: dto });
+export async function updateCourse(
+  id: string,
+  dto: UpdateCourseDto,
+  actorId: string,
+) {
+  const payload = updateCourseSchema.parse(dto);
+  const data: Prisma.CourseUncheckedUpdateInput = {};
+  if (payload.code !== undefined) data.code = payload.code;
+  if (payload.name !== undefined) data.name = payload.name;
+  if (payload.departmentId !== undefined)
+    data.departmentId = payload.departmentId;
+  if (payload.isActive !== undefined) data.isActive = payload.isActive;
+
+  const course = await prisma.course.update({ where: { id }, data });
+  await writeAuditEntry(actorId, "course:updated", "course", id, {
+    changes: dto,
+  });
   return course;
 }
 
 export async function exportCoursesCsv(): Promise<string> {
   const rows = await prisma.course.findMany({
     include: { department: { select: { code: true, name: true } } },
-    orderBy: { code: 'asc' },
+    orderBy: { code: "asc" },
   });
-  const header = 'code,name,departmentCode,departmentName,isActive,createdAt';
-  const lines = rows.map(r => [
-    csvEscape(r.code),
-    csvEscape(r.name),
-    csvEscape(r.department.code),
-    csvEscape(r.department.name),
-    r.isActive,
-    r.createdAt.toISOString(),
-  ].join(','));
-  return [header, ...lines].join('\r\n');
+  const header = "code,name,departmentCode,departmentName,isActive,createdAt";
+  const lines = rows.map((r) =>
+    [
+      csvEscape(r.code),
+      csvEscape(r.name),
+      csvEscape(r.department.code),
+      csvEscape(r.department.name),
+      r.isActive,
+      r.createdAt.toISOString(),
+    ].join(","),
+  );
+  return [header, ...lines].join("\r\n");
 }
 
 function csvEscape(v: string): string {
-  if (v.includes(',') || v.includes('"') || v.includes('\n')) return `"${v.replace(/"/g, '""')}"`;
+  if (v.includes(",") || v.includes('"') || v.includes("\n"))
+    return `"${v.replace(/"/g, '""')}"`;
   return v;
 }

@@ -125,7 +125,7 @@ export interface Student {
   phone: string | null;
   departmentId: string | null;
   membershipTierId: string | null;
-  membershipTier: { name: string; tier: string } | null;
+  membershipTier: { name: string } | null;
   growthPoints: number;
   storedValueBalance?: number | null;
   isActive: boolean;
@@ -205,6 +205,11 @@ export const studentApi = {
       },
     });
   },
+
+  exportCsv: () =>
+    apiClient.get("/api/students/export", {
+      responseType: "blob",
+    }),
 
   exportUrl: () => `${resolveApiBaseUrl()}/students/export`,
 };

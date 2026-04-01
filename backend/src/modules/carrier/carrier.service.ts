@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { encrypt } from '../../lib/encryption';
 
@@ -37,20 +38,29 @@ export async function getCarrierById(id: string) {
 }
 
 export async function createCarrier(data: z.infer<typeof createCarrierSchema>) {
-  const { apiKey, ...rest } = data;
+  const payload = createCarrierSchema.parse(data);
+  const createData: Prisma.CarrierUncheckedCreateInput = {
+    name: payload.name,
+    connectorUrl: payload.connectorUrl,
+    apiKeyEncrypted: encrypt(payload.apiKey),
+  };
+
   const carrier = await prisma.carrier.create({
-    data: { ...rest, apiKeyEncrypted: encrypt(apiKey) },
+    data: createData,
   });
   return serializeCarrier(carrier);
 }
 
 export async function updateCarrier(id: string, data: z.infer<typeof updateCarrierSchema>) {
   await getCarrierById(id);
-  const { apiKey, ...rest } = data;
-  const updateData: any = { ...rest };
-  if (apiKey !== undefined) {
-    updateData.apiKeyEncrypted = encrypt(apiKey);
-  }
+  const payload = updateCarrierSchema.parse(data);
+  const updateData: Prisma.CarrierUncheckedUpdateInput = {
+    ...(payload.name !== undefined ? { name: payload.name } : {}),
+    ...(payload.connectorUrl !== undefined ? { connectorUrl: payload.connectorUrl } : {}),
+    ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
+    ...(payload.apiKey !== undefined ? { apiKeyEncrypted: encrypt(payload.apiKey) } : {}),
+  };
+
   const carrier = await prisma.carrier.update({ where: { id }, data: updateData });
   return serializeCarrier(carrier);
 }

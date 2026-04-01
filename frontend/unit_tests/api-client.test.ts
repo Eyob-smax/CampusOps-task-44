@@ -1,31 +1,40 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import axios from 'axios';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import axios from "axios";
 
 // Shared localStorage backing store from setup.ts
 const _ls = (globalThis as any).__test_ls as Record<string, string>;
+let mockAccessToken: string | null = null;
 
 // ---------------------------------------------------------------------------
 // Mock uuid
 // ---------------------------------------------------------------------------
-vi.mock('uuid', () => ({
-  v4: vi.fn(() => 'test-uuid-1234'),
+vi.mock("uuid", () => ({
+  v4: vi.fn(() => "test-uuid-1234"),
+}));
+
+vi.mock("../src/stores/auth", () => ({
+  getAccessToken: vi.fn(() => mockAccessToken),
 }));
 
 // Import the real apiClient to test its interceptors
-import { apiClient } from '../src/api/client';
-import type { InternalAxiosRequestConfig } from 'axios';
+import { apiClient } from "../src/api/client";
+import type { InternalAxiosRequestConfig } from "axios";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function runRequestInterceptors(partial: Partial<InternalAxiosRequestConfig>): InternalAxiosRequestConfig {
+function runRequestInterceptors(
+  partial: Partial<InternalAxiosRequestConfig>,
+): InternalAxiosRequestConfig {
   const config: InternalAxiosRequestConfig = {
     ...partial,
     headers: new axios.AxiosHeaders(partial.headers as any),
   } as InternalAxiosRequestConfig;
 
   const handlers = (apiClient.interceptors.request as any).handlers as Array<{
-    fulfilled: ((c: InternalAxiosRequestConfig) => InternalAxiosRequestConfig) | null;
+    fulfilled:
+      | ((c: InternalAxiosRequestConfig) => InternalAxiosRequestConfig)
+      | null;
   }>;
   let result = config;
   for (const h of handlers) {
@@ -58,88 +67,97 @@ function clearLS() {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
-describe('API Client', () => {
+describe("API Client", () => {
   beforeEach(() => {
     clearLS();
-    (globalThis as any).window.location.href = '';
+    mockAccessToken = null;
+    (globalThis as any).window.location.href = "";
   });
 
   // -----------------------------------------------------------------------
   // Base URL
   // -----------------------------------------------------------------------
-  describe('base URL', () => {
-    it('is constructed from protocol + hostname + backend port', () => {
-      expect(apiClient.defaults.baseURL).toBe('http://localhost:6000');
+  describe("base URL", () => {
+    it("is constructed from protocol + hostname + backend port", () => {
+      expect(apiClient.defaults.baseURL).toBe("http://localhost:6006");
     });
   });
 
   // -----------------------------------------------------------------------
   // Authorization header
   // -----------------------------------------------------------------------
-  describe('authorization header', () => {
-    it('attaches Bearer token when access_token exists in localStorage', () => {
-      _ls['access_token'] = 'my-jwt';
-      const config = runRequestInterceptors({ method: 'get' });
-      expect(config.headers.get('Authorization')).toBe('Bearer my-jwt');
+  describe("authorization header", () => {
+    it("attaches Bearer token when access token exists in auth store", () => {
+      mockAccessToken = "my-jwt";
+      const config = runRequestInterceptors({ method: "get" });
+      expect(config.headers.get("Authorization")).toBe("Bearer my-jwt");
     });
 
-    it('does NOT attach Authorization when no token', () => {
-      const config = runRequestInterceptors({ method: 'get' });
-      expect(config.headers.get('Authorization')).toBeFalsy();
+    it("does NOT attach Authorization when no token", () => {
+      const config = runRequestInterceptors({ method: "get" });
+      expect(config.headers.get("Authorization")).toBeFalsy();
     });
   });
 
   // -----------------------------------------------------------------------
   // Idempotency key
   // -----------------------------------------------------------------------
-  describe('idempotency key', () => {
-    it.each(['post', 'put', 'patch'])(
-      'injects X-Idempotency-Key for %s requests',
+  describe("idempotency key", () => {
+    it.each(["post", "put", "patch"])(
+      "injects X-Idempotency-Key for %s requests",
       (method) => {
         const config = runRequestInterceptors({ method });
-        expect(config.headers.get('X-Idempotency-Key')).toBe('test-uuid-1234');
+        expect(config.headers.get("X-Idempotency-Key")).toBe("test-uuid-1234");
       },
     );
 
-    it.each(['get', 'delete'])(
-      'does NOT inject X-Idempotency-Key for %s requests',
+    it.each(["get", "delete"])(
+      "does NOT inject X-Idempotency-Key for %s requests",
       (method) => {
         const config = runRequestInterceptors({ method });
-        expect(config.headers.get('X-Idempotency-Key')).toBeFalsy();
+        expect(config.headers.get("X-Idempotency-Key")).toBeFalsy();
       },
     );
 
-    it('does not overwrite an existing X-Idempotency-Key', () => {
+    it("does not overwrite an existing X-Idempotency-Key", () => {
       const config = runRequestInterceptors({
-        method: 'post',
-        headers: new axios.AxiosHeaders({ 'X-Idempotency-Key': 'custom-key' }),
+        method: "post",
+        headers: new axios.AxiosHeaders({ "X-Idempotency-Key": "custom-key" }),
       });
-      expect(config.headers.get('X-Idempotency-Key')).toBe('custom-key');
+      expect(config.headers.get("X-Idempotency-Key")).toBe("custom-key");
     });
   });
 
   // -----------------------------------------------------------------------
   // 401 response handling
   // -----------------------------------------------------------------------
-  describe('401 response', () => {
-    it('clears token and redirects to /login', async () => {
-      _ls['access_token'] = 'old-token';
-      const error = { response: { status: 401, data: { message: 'Unauthorized' } } };
+  describe("401 response", () => {
+    it("redirects to /login", async () => {
+      _ls["access_token"] = "old-token";
+      const error = {
+        response: { status: 401, data: { message: "Unauthorized" } },
+      };
 
-      await expect(runResponseErrorInterceptor(error)).rejects.toEqual({ message: 'Unauthorized' });
+      await expect(runResponseErrorInterceptor(error)).rejects.toEqual({
+        message: "Unauthorized",
+      });
 
-      expect(_ls['access_token']).toBeUndefined();
-      expect((globalThis as any).window.location.href).toBe('/login');
+      expect(_ls["access_token"]).toBe("old-token");
+      expect((globalThis as any).window.location.href).toBe("/login");
     });
 
-    it('does not redirect for non-401 errors', async () => {
-      _ls['access_token'] = 'my-token';
-      const error = { response: { status: 500, data: { message: 'Server error' } } };
+    it("does not redirect for non-401 errors", async () => {
+      _ls["access_token"] = "my-token";
+      const error = {
+        response: { status: 500, data: { message: "Server error" } },
+      };
 
-      await expect(runResponseErrorInterceptor(error)).rejects.toEqual({ message: 'Server error' });
+      await expect(runResponseErrorInterceptor(error)).rejects.toEqual({
+        message: "Server error",
+      });
 
-      expect(_ls['access_token']).toBe('my-token');
-      expect((globalThis as any).window.location.href).toBe('');
+      expect(_ls["access_token"]).toBe("my-token");
+      expect((globalThis as any).window.location.href).toBe("");
     });
   });
 });

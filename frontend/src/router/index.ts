@@ -2,6 +2,14 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import type { UserRole } from '../types';
 
+const MASTER_DATA_READ_ROLES: UserRole[] = [
+  'administrator',
+  'operations_manager',
+  'classroom_supervisor',
+  'customer_service_agent',
+  'auditor',
+];
+
 // Route meta typing
 declare module 'vue-router' {
   interface RouteMeta {
@@ -51,11 +59,11 @@ const router = createRouter({
         },
 
         // Master Data
-        { path: 'students', component: () => import('../views/master-data/StudentsView.vue'), meta: { title: 'Students' } },
-        { path: 'departments', component: () => import('../views/master-data/DepartmentsView.vue'), meta: { title: 'Departments' } },
-        { path: 'courses', component: () => import('../views/master-data/CoursesView.vue'), meta: { title: 'Courses' } },
-        { path: 'classes', component: () => import('../views/master-data/ClassesView.vue'), meta: { title: 'Classes' } },
-        { path: 'semesters', component: () => import('../views/master-data/SemestersView.vue'), meta: { title: 'Semesters' } },
+        { path: 'students', component: () => import('../views/master-data/StudentsView.vue'), meta: { title: 'Students', roles: MASTER_DATA_READ_ROLES } },
+        { path: 'departments', component: () => import('../views/master-data/DepartmentsView.vue'), meta: { title: 'Departments', roles: MASTER_DATA_READ_ROLES } },
+        { path: 'courses', component: () => import('../views/master-data/CoursesView.vue'), meta: { title: 'Courses', roles: MASTER_DATA_READ_ROLES } },
+        { path: 'classes', component: () => import('../views/master-data/ClassesView.vue'), meta: { title: 'Classes', roles: MASTER_DATA_READ_ROLES } },
+        { path: 'semesters', component: () => import('../views/master-data/SemestersView.vue'), meta: { title: 'Semesters', roles: MASTER_DATA_READ_ROLES } },
 
         // Warehouse & Logistics
         { path: 'warehouses', component: () => import('../views/logistics/WarehousesView.vue'), meta: { title: 'Warehouses', roles: ['administrator', 'operations_manager'] } },
@@ -105,21 +113,25 @@ const router = createRouter({
 });
 
 // Route guards
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore();
 
-  if (to.meta.requiresAuth && !auth.isAuthenticated) {
-    next({ path: '/login', query: { redirect: to.fullPath } });
-    return;
+  if (to.meta.requiresAuth) {
+    await auth.ensureInitialized();
   }
 
-  if (to.meta.roles && auth.user && !to.meta.roles.includes(auth.user.role)) {
-    next({ path: '/dashboard' });
-    return;
+  if (to.meta.requiresAuth && !auth.isAuthenticated) {
+    return { path: '/login', query: { redirect: to.fullPath } };
+  }
+
+  if (to.meta.roles) {
+    if (!auth.user || !to.meta.roles.includes(auth.user.role)) {
+      return { path: '/dashboard' };
+    }
   }
 
   document.title = to.meta.title ? `${to.meta.title} — CampusOps` : 'CampusOps';
-  next();
+  return true;
 });
 
 export default router;

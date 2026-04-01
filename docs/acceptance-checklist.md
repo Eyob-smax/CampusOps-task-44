@@ -232,7 +232,7 @@ The complete end-to-end QA path requires secrets plus configured seeded password
 ```bash
 cd TASK-15/repo
 docker compose up               # All 4 containers start; schema pushed; seed runs
-# → open http://localhost       # Login page appears
+# → open https://localhost      # Login page appears (self-signed cert in disconnected LAN mode)
 # → login as admin/<SEED_ADMIN_PASSWORD>
 # → verify Jobs screen shows 8 background jobs
 # → trigger a manual backup via API or Jobs screen

@@ -9,15 +9,28 @@
 networks:
   campusops-net:
 
+volumes:
+  db-data:
+    name: campusops-test-db-data
+  redis-data:
+    name: campusops-test-redis-data
+  storage-data:
+    name: campusops-test-storage-data
+  logs-data:
+    name: campusops-test-logs-data
+  backups-data:
+    name: campusops-test-backups-data
+
 services:
   db:
     environment:
-      MYSQL_DATABASE: campusops_test
+      MYSQL_DATABASE: campusops
 
   backend:
+    ports: []
     environment:
       NODE_ENV: test
-      DB_NAME: campusops_test
+      DB_NAME: campusops
       SEED_ADMIN_PASSWORD: TestAdminPass1!
       SEED_OPS_MANAGER_PASSWORD: TestOpsPass1!
       SEED_SUPERVISOR_PASSWORD: TestSupervisorPass1!
@@ -42,7 +55,7 @@ services:
     entrypoint: ["npx", "vitest", "run", "--reporter", "verbose", "unit_tests"]
     environment:
       NODE_ENV: test
-      DB_NAME: campusops_test
+      DB_NAME: campusops
       REDIS_URL: redis://redis:6379
       SEED_ADMIN_PASSWORD: TestAdminPass1!
       SEED_OPS_MANAGER_PASSWORD: TestOpsPass1!
@@ -67,7 +80,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: campusops-api-tests
     entrypoint: ["/docker-entrypoint.sh"]
     command:
       [
@@ -82,7 +94,7 @@ services:
       NODE_ENV: test
       DB_HOST: db
       DB_PORT: "3306"
-      DB_NAME: campusops_test
+      DB_NAME: campusops
       DB_USER: campusops
       REDIS_URL: redis://redis:6379
       SEED_ADMIN_PASSWORD: TestAdminPass1!

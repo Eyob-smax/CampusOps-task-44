@@ -27,7 +27,7 @@ cd repo && docker compose up -d
 **Health check:**
 
 ```bash
-curl http://localhost:6000/health
+curl -k https://localhost/health
 ```
 
 **View live logs:**
@@ -42,7 +42,7 @@ docker compose logs -f backend
 docker compose ps
 ```
 
-**Expected state:** Four containers (`campusops-frontend`, `campusops-backend`, `campusops-db`, `campusops-redis`) all showing `healthy` or `running`.
+**Expected state:** Five services (`reverse-proxy`, `frontend`, `backend`, `db`, `redis`) all showing `healthy` or `running`.
 
 ---
 
@@ -56,7 +56,7 @@ Use this checklist when the system appears degraded or unavailable. Work top-to-
 docker compose ps
 ```
 
-- All four containers should show `Up` and `healthy`.
+- All five services should show `Up` and `healthy`.
 - If a container shows `Exit` or `unhealthy`, restart it:
   ```bash
   docker compose restart <service-name>
@@ -69,7 +69,7 @@ docker compose ps
 ### Step 2 — Check the health endpoint
 
 ```bash
-curl http://localhost:6000/health
+curl -k https://localhost/health
 ```
 
 Expected: `{ "status": "ok", "db": "connected", "redis": "connected" }`
@@ -83,7 +83,7 @@ If the response shows `"redis": "error"`, go to the **Redis** section of [troubl
 Via API (requires admin token):
 
 ```bash
-curl "http://localhost:6000/api/logs?level=error&limit=50" \
+curl -k "https://localhost/api/logs?level=error&limit=50" \
   -H "Authorization: Bearer <admin-token>"
 ```
 
@@ -95,12 +95,12 @@ docker compose logs --tail=100 backend | grep '"level":"error"'
 
 ### Step 4 — Check active alerts
 
-Log in to the web console at `http://localhost`. Any active threshold-breach alerts will be shown as banners on the dashboard.
+Log in to the web console at `https://localhost`. Any active threshold-breach alerts will be shown as banners on the dashboard.
 
 Or via API:
 
 ```bash
-curl "http://localhost:6000/api/alerts?acknowledged=false" \
+curl -k "https://localhost/api/alerts?acknowledged=false" \
   -H "Authorization: Bearer <admin-token>"
 ```
 
@@ -116,7 +116,7 @@ Common alerts and their meaning:
 ### Step 5 — Check background job health
 
 ```bash
-curl "http://localhost:6000/api/jobs?status=failed&limit=20" \
+curl -k "https://localhost/api/jobs?status=failed&limit=20" \
   -H "Authorization: Bearer <admin-token>"
 ```
 
@@ -125,7 +125,7 @@ For stalled workers, see [troubleshooting.md](./troubleshooting.md) section 5.
 To retry a failed job:
 
 ```bash
-curl -X POST "http://localhost:6000/api/jobs/<jobId>/retry" \
+curl -k -X POST "https://localhost/api/jobs/<jobId>/retry" \
   -H "Authorization: Bearer <admin-token>" \
   -H "X-Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json"
@@ -136,14 +136,14 @@ curl -X POST "http://localhost:6000/api/jobs/<jobId>/retry" \
 If the issue involves data integrity, verify the last successful backup:
 
 ```bash
-curl "http://localhost:6000/api/backups?status=completed&limit=5" \
+curl -k "https://localhost/api/backups?status=completed&limit=5" \
   -H "Authorization: Bearer <admin-token>"
 ```
 
 If no recent backup exists, trigger one immediately:
 
 ```bash
-curl -X POST "http://localhost:6000/api/backups" \
+curl -k -X POST "https://localhost/api/backups" \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json"
 ```

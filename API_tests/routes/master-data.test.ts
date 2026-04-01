@@ -5,6 +5,14 @@
 import request from 'supertest';
 import { app, loginAs, authGet, authPost, authPut, authDelete, uuid } from '../helpers/setup';
 
+async function postImportCsv(path: string, role: 'admin' | 'ops' | 'auditor' | 'agent' | 'supervisor', csv: string, filename: string) {
+  const token = await loginAs(role);
+  return request(app)
+    .post(path)
+    .set('Authorization', `Bearer ${token}`)
+    .attach('file', Buffer.from(csv, 'utf8'), filename);
+}
+
 // ---- Departments ----
 
 describe('GET /api/departments', () => {
@@ -144,6 +152,66 @@ describe('POST /api/students', () => {
       studentNumber: 'SBLK', fullName: 'Blocked', email: 'blk@test.edu',
     });
     expect(res.status).toBe(403);
+  });
+});
+
+// ---- Non-student import endpoints ----
+
+describe('POST /api/departments/import', () => {
+  it('returns 401 without token', async () => {
+    const res = await request(app)
+      .post('/api/departments/import')
+      .attach('file', Buffer.from('code,name\nD1,Dept 1\n', 'utf8'), 'departments.csv');
+    expect(res.status).toBe(401);
+  });
+
+  it('imports departments from CSV for admin', async () => {
+    const suffix = Date.now().toString(36).toUpperCase();
+    const csv = `code,name,isActive\nMD${suffix},Master Dept ${suffix},true\n`;
+    const res = await postImportCsv('/api/departments/import', 'admin', csv, 'departments.csv');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.created + res.body.data.updated).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('POST /api/semesters/import', () => {
+  it('imports semesters from CSV for admin', async () => {
+    const suffix = Date.now().toString(36).toUpperCase();
+    const csv = `name,startDate,endDate,isActive\nSemester ${suffix},2027-01-01,2027-05-01,true\n`;
+    const res = await postImportCsv('/api/semesters/import', 'admin', csv, 'semesters.csv');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.created + res.body.data.updated).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('POST /api/courses/import', () => {
+  it('imports courses from CSV and resolves department codes', async () => {
+    const suffix = Date.now().toString(36).toUpperCase();
+
+    const deptCreate = await authPost('/api/departments', 'admin', {
+      code: `CD${suffix}`,
+      name: `Course Dept ${suffix}`,
+    });
+    expect([200, 201]).toContain(deptCreate.status);
+
+    const csv = `code,name,departmentCode,isActive\nCR${suffix},Course ${suffix},CD${suffix},true\n`;
+    const res = await postImportCsv('/api/courses/import', 'admin', csv, 'courses.csv');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.created + res.body.data.updated).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('POST /api/classes/import', () => {
+  it('returns validation errors and downloadable CSV text when references are invalid', async () => {
+    const csv = 'name,courseCode,departmentCode,semesterName,roomNumber,isActive\nClass A,MISSING,NOPE,Unknown Semester,101,true\n';
+    const res = await postImportCsv('/api/classes/import', 'admin', csv, 'classes.csv');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.failed).toBeGreaterThanOrEqual(1);
+    expect(typeof res.body.data.errorReportCsv).toBe('string');
   });
 });
 

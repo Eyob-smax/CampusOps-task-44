@@ -2,14 +2,14 @@
 
 ## Overview
 
-CampusOps backup manifests are JSON files containing row counts and metadata.
-They are **not** full data dumps; they serve as audit checkpoints and
-health-verification snapshots. For a full restore you need a separate database
-dump (e.g., mysqldump). This runbook covers both scenarios.
+CampusOps backups produce a SQL dump file plus a JSON manifest containing row
+counts and metadata. The SQL dump is the restore artifact; the manifest is an
+integrity/checkpoint artifact used to validate expected data shape before and
+after restore.
 
 ---
 
-## Step 1 — Locate the backup manifest
+## Step 1 — Locate backup artifacts
 
 List available backups via API:
 
@@ -23,26 +23,27 @@ Or check the backup directory directly:
 ls -lh /var/campusops/backups/
 ```
 
-Identify the manifest file for the desired point-in-time, e.g.:
+Identify the backup pair for the desired point-in-time, e.g.:
 
 ```
+backup_2026-03-30_030000.sql
 backup_2026-03-30_030000.json
 ```
 
 ---
 
-## Step 2 — Verify the manifest before restore
+## Step 2 — Verify backup integrity before restore
 
 ```
 POST /api/backups/:id/verify
 ```
 
 Confirm `passed: true` in the response. If `passed: false`, check `details` for
-the reason (missing file, parse error, missing keys).
+the reason (missing/empty dump file, parse error, missing manifest keys).
 
 ---
 
-## Step 3a — Restore from a database dump (recommended for full data recovery)
+## Step 3a — Restore from the SQL dump (recommended for full data recovery)
 
 1. Stop all backend services to prevent writes during restore.
 
@@ -50,10 +51,10 @@ the reason (missing file, parse error, missing keys).
 pm2 stop campusops-api
 ```
 
-2. Restore the MySQL dump:
+2. Restore the SQL dump:
 
 ```bash
-mysql -u <user> -p <database> < /path/to/dump_2026-03-30.sql
+mysql -u <user> -p <database> < /path/to/backup_2026-03-30_030000.sql
 ```
 
 3. Restart backend services:
@@ -125,8 +126,8 @@ LIMIT 20;
 
 ## Notes
 
-- The backup manifest does **not** contain row data, only counts.
-- Always pair manifests with a proper mysqldump or database snapshot strategy
-  for production disaster recovery.
+- The manifest does **not** contain row data; use the SQL dump for restore.
+- For stronger disaster recovery posture, still mirror dumps to external/off-site
+  storage in addition to local backup volume retention.
 - Backup files are retained for 14 days by default. Ensure long-term archives
   are stored separately (e.g., copied to S3 or an off-site volume).

@@ -1,4 +1,4 @@
-const DEFAULT_BACKEND_PORT = 6000;
+const DEFAULT_BACKEND_PORT = 6006;
 
 function parseBackendPort(): number {
   const raw = import.meta.env.VITE_BACKEND_PORT;

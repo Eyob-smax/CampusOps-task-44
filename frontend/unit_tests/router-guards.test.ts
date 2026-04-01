@@ -48,21 +48,25 @@ function buildRouter() {
   });
 
   // Replicate the same guard logic from the real router
-  router.beforeEach((to, _from, next) => {
+  router.beforeEach(async (to) => {
     const auth = useAuthStore();
 
+    if (to.meta.requiresAuth) {
+      await auth.ensureInitialized();
+    }
+
     if (to.matched.some((r) => r.meta.requiresAuth) && !auth.isAuthenticated) {
-      next({ path: '/login', query: { redirect: to.fullPath } });
-      return;
+      return { path: '/login', query: { redirect: to.fullPath } };
     }
 
     const roles = to.meta.roles as string[] | undefined;
-    if (roles && auth.user && !roles.includes(auth.user.role)) {
-      next({ path: '/dashboard' });
-      return;
+    if (roles) {
+      if (!auth.user || !roles.includes(auth.user.role)) {
+        return { path: '/dashboard' };
+      }
     }
 
-    next();
+    return true;
   });
 
   return router;
@@ -84,6 +88,17 @@ describe('Router Guards', () => {
   // Unauthenticated access
   // -----------------------------------------------------------------------
   describe('unauthenticated user', () => {
+    it('waits for auth initialization before protected route checks', async () => {
+      const store = useAuthStore();
+      const ensureSpy = vi.spyOn(store, 'ensureInitialized').mockResolvedValue(undefined);
+
+      const router = buildRouter();
+      await router.push('/dashboard');
+      await router.isReady();
+
+      expect(ensureSpy).toHaveBeenCalled();
+    });
+
     it('redirects to /login for protected routes', async () => {
       const router = buildRouter();
       await router.push('/dashboard');

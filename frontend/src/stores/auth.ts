@@ -26,6 +26,31 @@ import type { LoginResponse, TokenPair } from "../api/auth";
 // ---------------------------------------------------------------------------
 
 const REFRESH_KEY = "refresh_token";
+const REFRESH_MODE = (import.meta.env.VITE_AUTH_REFRESH_MODE ?? "localstorage")
+  .toLowerCase()
+  .trim();
+const USE_REFRESH_COOKIE = REFRESH_MODE === "cookie";
+
+function writeRefreshToken(token: string): void {
+  if (!USE_REFRESH_COOKIE) {
+    localStorage.setItem(REFRESH_KEY, token);
+  }
+}
+
+function readRefreshToken(): string | null {
+  if (USE_REFRESH_COOKIE) {
+    // Cookie mode cannot be inspected from JS by design (HttpOnly).
+    // The backend is expected to read the cookie server-side on refresh.
+    return "__cookie_mode__";
+  }
+  return localStorage.getItem(REFRESH_KEY);
+}
+
+function clearRefreshToken(): void {
+  if (!USE_REFRESH_COOKIE) {
+    localStorage.removeItem(REFRESH_KEY);
+  }
+}
 
 /**
  * Return the current in-memory access token without importing the full store.
@@ -41,6 +66,9 @@ export const useAuthStore = defineStore("auth", () => {
   // Access token lives in memory only — never persisted to storage.
   const user = ref<AuthUser | null>(null);
   const accessToken = ref<string | null>(null);
+  const authInitialized = ref(false);
+
+  let initPromise: Promise<void> | null = null;
 
   // Expose a getter so the API interceptor can read the token without a
   // circular-import on the store.
@@ -54,26 +82,28 @@ export const useAuthStore = defineStore("auth", () => {
       password,
     });
     _applyTokens(res.data.accessToken, res.data.user);
-    localStorage.setItem(REFRESH_KEY, res.data.refreshToken);
+    writeRefreshToken(res.data.refreshToken);
+    authInitialized.value = true;
     scheduleRefresh(res.data.expiresIn);
   }
 
   async function refreshSession(): Promise<void> {
-    const rt = localStorage.getItem(REFRESH_KEY);
+    const rt = readRefreshToken();
     if (!rt) {
       logout();
       return;
     }
     try {
-      const res = await apiClient.post<TokenPair>("/api/auth/refresh", {
-        refreshToken: rt,
-      });
+      const payload = USE_REFRESH_COOKIE ? {} : { refreshToken: rt };
+      const res = await apiClient.post<TokenPair>("/api/auth/refresh", payload);
       // Fetch user info separately since refresh endpoint only returns tokens
       const meRes = await apiClient.get<AuthUser>("/api/auth/me", {
         headers: { Authorization: `Bearer ${res.data.accessToken}` },
       });
       _applyTokens(res.data.accessToken, meRes.data);
-      localStorage.setItem(REFRESH_KEY, res.data.refreshToken);
+      if (res.data.refreshToken) {
+        writeRefreshToken(res.data.refreshToken);
+      }
       scheduleRefresh(res.data.expiresIn);
     } catch {
       logout();
@@ -100,7 +130,7 @@ export const useAuthStore = defineStore("auth", () => {
    * component / router guard.
    */
   async function initAuth(): Promise<void> {
-    const rt = localStorage.getItem(REFRESH_KEY);
+    const rt = readRefreshToken();
     if (!rt) return;
     try {
       await refreshSession();
@@ -109,11 +139,25 @@ export const useAuthStore = defineStore("auth", () => {
     }
   }
 
+  async function ensureInitialized(): Promise<void> {
+    if (authInitialized.value) return;
+    if (!initPromise) {
+      initPromise = (async () => {
+        await initAuth();
+      })().finally(() => {
+        authInitialized.value = true;
+        initPromise = null;
+      });
+    }
+    await initPromise;
+  }
+
   function logout(): void {
     apiClient.post("/api/auth/logout").catch(() => {});
     user.value = null;
     accessToken.value = null;
-    localStorage.removeItem(REFRESH_KEY);
+    clearRefreshToken();
+    authInitialized.value = true;
     if (_refreshTimer) clearTimeout(_refreshTimer);
   }
 
@@ -125,10 +169,12 @@ export const useAuthStore = defineStore("auth", () => {
   return {
     user,
     accessToken,
+    authInitialized,
     isAuthenticated,
     login,
     refreshSession,
     initAuth,
+    ensureInitialized,
     logout,
     can,
   };

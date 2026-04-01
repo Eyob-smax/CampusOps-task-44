@@ -16,7 +16,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 import { ElConfigProvider } from 'element-plus';
 import en from 'element-plus/es/locale/lang/en';
 import { useAuthStore } from '@/stores/auth';
@@ -56,20 +56,26 @@ function playAlertChime() {
 }
 
 const auth = useAuthStore();
+let stopSocketWatcher: (() => void) | null = null;
 
-onMounted(() => {
-  // Restore session from localStorage token
-  if (auth.accessToken && !auth.user) {
-    auth.refreshSession();
-  }
+onMounted(async () => {
+  await auth.ensureInitialized();
 
-  // Connect alerts WebSocket when authenticated
-  if (auth.isAuthenticated) {
-    connectAlertSocket(auth.accessToken!, (msg) => showAlertBanner(msg));
-  }
+  stopSocketWatcher = watch(
+    () => [auth.isAuthenticated, auth.accessToken] as const,
+    ([isAuthenticated, token]) => {
+      if (isAuthenticated && token) {
+        connectAlertSocket(token, (msg) => showAlertBanner(msg));
+        return;
+      }
+      disconnectAlertSocket();
+    },
+    { immediate: true },
+  );
 });
 
 onUnmounted(() => {
+  if (stopSocketWatcher) stopSocketWatcher();
   disconnectAlertSocket();
 });
 </script>

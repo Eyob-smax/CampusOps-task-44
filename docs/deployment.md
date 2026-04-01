@@ -1,5 +1,7 @@
 # Deployment Guide — CampusOps Fulfillment & Operations Platform
 
+This document is the single source of truth for deployment topology, exposed ports, and startup/runtime verification.
+
 ---
 
 ## 1. Prerequisites
@@ -46,7 +48,8 @@ On first boot:
 2. The backend waits for MySQL to be healthy, then runs `prisma migrate deploy`.
 3. The seed script (`database/seeders/seed.ts`, compiled to `dist/`) creates seeded user accounts only when non-placeholder `SEED_*_PASSWORD` values are configured.
 4. BullMQ repeatable jobs are registered.
-5. The frontend builds the Vue SPA (production build) and serves static assets from a Node runtime on port 80.
+5. The frontend builds the Vue SPA and serves static assets on an internal container port.
+6. `reverse-proxy` terminates TLS on `:443`, redirects `:80` to HTTPS, and proxies `/`, `/api/*`, `/health`, and `/socket.io/*`.
 
 First-boot time is typically 60–120 seconds depending on hardware. Monitor with:
 
@@ -72,7 +75,14 @@ Check container health:
 docker compose ps
 ```
 
-All four containers should show `healthy` or `running`. The `campusops-db` and `campusops-redis` containers are checked by Docker healthchecks before the backend starts.
+All five containers should show `healthy` or `running`.
+
+Expected services:
+- `db`
+- `redis`
+- `backend`
+- `frontend`
+- `reverse-proxy`
 
 ---
 
@@ -80,8 +90,10 @@ All four containers should show `healthy` or `running`. The `campusops-db` and `
 
 CampusOps is designed for **air-gapped local network operation**:
 
-- The system is **HTTP only**. There is no TLS built in and no certificate management.
-- The frontend container listens on host port 80 and the backend API listens on host port 6000.
+- The system is **TLS-first** for LAN traffic.
+- Host port `80` is redirect-only (`http` → `https`).
+- Host port `443` is the only application ingress for browser/API/socket traffic.
+- `reverse-proxy` uses a self-signed certificate by default for disconnected deployments.
 - All container-to-container traffic is on the internal `campusops-net` Docker bridge — never routed over the LAN.
 - No feature requires internet access at runtime. Carrier sync is simulated internally.
 
@@ -90,8 +102,8 @@ CampusOps is designed for **air-gapped local network operation**:
 Replace `localhost` with the host machine's LAN IP address:
 
 ```
-http://192.168.1.50            # Web console
-http://192.168.1.50:6000/api   # API
+https://192.168.1.50        # Web console
+https://192.168.1.50/api    # API
 ```
 
 ---
@@ -166,7 +178,7 @@ The backup system runs automatically. Key configuration points:
 To trigger a manual backup immediately:
 
 ```bash
-curl -X POST http://localhost:6000/api/backups \
+curl -k -X POST https://localhost/api/backups \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json"
 ```
@@ -198,7 +210,7 @@ See `docs/backup.md` for the full backup operations reference.
 3. **Back up the current state:**
 
    ```bash
-    curl -X POST http://localhost:6000/api/backups \
+   curl -k -X POST https://localhost/api/backups \
      -H "Authorization: Bearer <admin-token>"
    ```
 
@@ -234,7 +246,7 @@ See `docs/backup.md` for the full backup operations reference.
 
 9. **Verify the health endpoint:**
    ```bash
-   curl http://localhost:6000/health
+   curl -k https://localhost/health
    ```
 
 ---

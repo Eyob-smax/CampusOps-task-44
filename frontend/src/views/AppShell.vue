@@ -237,7 +237,7 @@ function handleUserCommand(cmd: string) {
 }
 
 .sidebar {
-  background: #001529;
+  background: #061a2e;
   transition: width 0.25s;
   overflow: hidden;
   display: flex;
@@ -252,31 +252,49 @@ function handleUserCommand(cmd: string) {
   color: #fff;
   font-size: 18px;
   font-weight: 700;
-  border-bottom: 1px solid #1d2d3e;
+  border-bottom: 1px solid #173551;
   flex-shrink: 0;
 }
 
 .sidebar-menu {
   border-right: none;
-  background: #001529;
+  background: #061a2e;
   flex: 1;
   overflow-y: auto;
 }
 
 :deep(.el-menu--vertical .el-menu-item),
 :deep(.el-menu--vertical .el-sub-menu__title) {
-  color: #b0bec5 !important;
+  color: #d7e4f2 !important;
 }
 
 :deep(.el-menu--vertical .el-menu-item:hover),
 :deep(.el-menu--vertical .el-sub-menu__title:hover) {
-  background-color: #1d2d3e !important;
+  background-color: #11304a !important;
   color: #fff !important;
 }
 
 :deep(.el-menu--vertical .el-menu-item.is-active) {
-  background-color: #1890ff !important;
+  background-color: #1f6feb !important;
   color: #fff !important;
+}
+
+/* Keep submenu popups high-contrast when a section is expanded in compact/scroll states. */
+:deep(.el-menu--popup) {
+  background: #0b2238 !important;
+  border: 1px solid #173551 !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35) !important;
+}
+
+:deep(.el-menu--popup .el-menu-item),
+:deep(.el-menu--popup .el-sub-menu__title) {
+  color: #deebf8 !important;
+}
+
+:deep(.el-menu--popup .el-menu-item:hover),
+:deep(.el-menu--popup .el-sub-menu__title:hover) {
+  background-color: #173a5a !important;
+  color: #ffffff !important;
 }
 
 .app-header {

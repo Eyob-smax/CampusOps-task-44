@@ -2,27 +2,28 @@
 
 ## Overview
 
-CampusOps does not perform automated data restore from the backup manifests because the manifests
-contain row counts only, not row data. A full restore requires access to a MySQL binary log backup
-or a `mysqldump` file taken by the infrastructure team outside of this application.
+CampusOps does not perform automated in-place restore, but each backup run writes a SQL dump plus
+JSON manifest. The SQL dump is used for restore. The manifest contains row-count checkpoints for
+validation before and after restore.
 
 This runbook documents:
-1. How to verify a backup manifest is intact before a restore.
-2. How to perform a database restore from a `mysqldump` file.
+1. How to verify backup artefacts before a restore.
+2. How to perform a database restore from the generated SQL dump.
 3. How to validate the restore was successful.
 
 ---
 
-## Step 1 — Verify the backup manifest
+## Step 1 — Verify backup artefacts
 
-Before restoring, confirm the most recent backup manifest is valid:
+Before restoring, confirm the most recent dump + manifest pair is valid:
 
 ```bash
-# Find the latest manifest
+# Find the latest backup files
 ls -lt $BACKUP_PATH | head -5
 
 # Manually inspect
 cat $BACKUP_PATH/backup_YYYY-MM-DD_HHmmss.json | python3 -m json.tool
+ls -lh $BACKUP_PATH/backup_YYYY-MM-DD_HHmmss.sql
 ```
 
 Or use the API:
@@ -38,7 +39,7 @@ Expected response when healthy:
 ```
 
 If verification fails (`passed: false`), investigate before proceeding. The `details` field
-describes what is wrong (missing keys, file not found, JSON parse error).
+describes what is wrong (missing/empty dump file, missing keys, JSON parse error).
 
 ---
 
@@ -56,14 +57,14 @@ kill -SIGTERM <pid>
 
 ---
 
-## Step 3 — Restore MySQL from a dump
+## Step 3 — Restore MySQL from the SQL dump
 
 ```bash
 # Drop and recreate the database
 mysql -h $DB_HOST -u root -p -e "DROP DATABASE campusops; CREATE DATABASE campusops CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
-# Restore from dump
-mysql -h $DB_HOST -u root -p campusops < /path/to/campusops_YYYY-MM-DD.sql
+# Restore from CampusOps backup dump
+mysql -h $DB_HOST -u root -p campusops < $BACKUP_PATH/backup_YYYY-MM-DD_HHmmss.sql
 ```
 
 If using binary logs to restore to a specific point in time:
@@ -128,4 +129,4 @@ Monitor:
 
 ## Rollback
 
-If the restore worsens the situation, restore from the next-oldest `mysqldump` and repeat from Step 3.
+If the restore worsens the situation, restore from the next-oldest SQL backup and repeat from Step 3.

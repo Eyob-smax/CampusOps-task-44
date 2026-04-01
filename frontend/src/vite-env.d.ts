@@ -2,6 +2,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_BACKEND_PORT?: string;
+  readonly VITE_AUTH_REFRESH_MODE?: "localstorage" | "cookie";
 }
 
 interface ImportMeta {

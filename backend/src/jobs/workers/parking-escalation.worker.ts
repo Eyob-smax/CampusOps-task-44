@@ -1,7 +1,7 @@
-import { Worker } from 'bullmq';
-import { getRedisClient } from '../../lib/redis';
-import { logger } from '../../lib/logger';
-import { escalateSlaBreaches } from '../../modules/parking/alert.service';
+import { Worker } from "bullmq";
+import { getRedisClient } from "../../lib/redis";
+import { logger } from "../../lib/logger";
+import { escalateSlaBreaches } from "../../modules/parking/alert.service";
 
 const connection = { connection: getRedisClient() };
 
@@ -10,18 +10,25 @@ const connection = { connection: getRedisClient() };
  * Finds parking alerts whose slaDeadlineAt has passed and escalates them.
  */
 export const parkingEscalationWorker = new Worker(
-  'campusops:parking-sla-check',
+  "campusops-parking-sla-check",
   async (job) => {
-    logger.debug({ msg: 'Parking SLA check started', jobId: job.id });
+    logger.debug({ msg: "Parking SLA check started", jobId: job.id });
     const escalated = await escalateSlaBreaches();
     if (escalated > 0) {
-      logger.warn({ msg: 'Parking alerts auto-escalated (SLA breach)', count: escalated });
+      logger.warn({
+        msg: "Parking alerts auto-escalated (SLA breach)",
+        count: escalated,
+      });
     }
     return { escalated };
   },
-  connection
+  connection,
 );
 
-parkingEscalationWorker.on('failed', (job, err) => {
-  logger.error({ msg: 'Parking escalation worker failed', jobId: job?.id, err });
+parkingEscalationWorker.on("failed", (job, err) => {
+  logger.error({
+    msg: "Parking escalation worker failed",
+    jobId: job?.id,
+    err,
+  });
 });

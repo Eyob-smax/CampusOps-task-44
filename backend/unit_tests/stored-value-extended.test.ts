@@ -5,13 +5,14 @@
  * type validation, edge-case balance arithmetic, and top-up constraints.
  * No DB, no network.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from "vitest";
+import { createTierSchema } from "../src/modules/membership/membership.service";
 
-process.env.ENCRYPTION_KEY = 'a'.repeat(64);
-process.env.JWT_SECRET     = 'test-jwt-secret';
-process.env.NODE_ENV       = 'test';
+process.env.ENCRYPTION_KEY = "a".repeat(64);
+process.env.JWT_SECRET = "test-jwt-secret";
+process.env.NODE_ENV = "test";
 
-const { encryptAmount, decryptAmount } = await import('../src/lib/encryption');
+const { encryptAmount, decryptAmount } = await import("../src/lib/encryption");
 
 // ============================================================
 // Receipt text formatting (mirrored from generateReceiptText)
@@ -33,9 +34,9 @@ function buildReceiptText(txn: MockTxn): string {
   const balanceAfter = decryptAmount(txn.balanceAfterEncrypted);
 
   const lines = [
-    '================================',
-    '     STORED VALUE RECEIPT',
-    '================================',
+    "================================",
+    "     STORED VALUE RECEIPT",
+    "================================",
     `Date:          ${txn.createdAt.toISOString()}`,
     `Transaction:   ${txn.id}`,
     `Type:          ${txn.type.toUpperCase()}`,
@@ -44,24 +45,24 @@ function buildReceiptText(txn: MockTxn): string {
   ];
 
   if (txn.referenceId) {
-    lines.push(`Reference:     ${txn.referenceType ?? ''} ${txn.referenceId}`);
+    lines.push(`Reference:     ${txn.referenceType ?? ""} ${txn.referenceId}`);
   }
   if (txn.note) {
     lines.push(`Note:          ${txn.note}`);
   }
 
-  lines.push('================================');
-  return lines.join('\n');
+  lines.push("================================");
+  return lines.join("\n");
 }
 
-describe('receipt text formatting', () => {
-  const baseDate = new Date('2026-03-31T10:00:00.000Z');
+describe("receipt text formatting", () => {
+  const baseDate = new Date("2026-03-31T10:00:00.000Z");
 
-  it('contains the STORED VALUE RECEIPT header', () => {
+  it("contains the STORED VALUE RECEIPT header", () => {
     const txn: MockTxn = {
-      id: 'txn-001',
+      id: "txn-001",
       createdAt: baseDate,
-      type: 'top_up',
+      type: "top_up",
       amountEncrypted: encryptAmount(50),
       balanceAfterEncrypted: encryptAmount(150),
       referenceId: null,
@@ -69,14 +70,14 @@ describe('receipt text formatting', () => {
       note: null,
     };
     const receipt = buildReceiptText(txn);
-    expect(receipt).toContain('STORED VALUE RECEIPT');
+    expect(receipt).toContain("STORED VALUE RECEIPT");
   });
 
-  it('includes the transaction id', () => {
+  it("includes the transaction id", () => {
     const txn: MockTxn = {
-      id: 'txn-abc-123',
+      id: "txn-abc-123",
       createdAt: baseDate,
-      type: 'spend',
+      type: "spend",
       amountEncrypted: encryptAmount(25),
       balanceAfterEncrypted: encryptAmount(75),
       referenceId: null,
@@ -84,14 +85,14 @@ describe('receipt text formatting', () => {
       note: null,
     };
     const receipt = buildReceiptText(txn);
-    expect(receipt).toContain('txn-abc-123');
+    expect(receipt).toContain("txn-abc-123");
   });
 
-  it('shows type in uppercase', () => {
+  it("shows type in uppercase", () => {
     const txn: MockTxn = {
-      id: 'txn-002',
+      id: "txn-002",
       createdAt: baseDate,
-      type: 'top_up',
+      type: "top_up",
       amountEncrypted: encryptAmount(30),
       balanceAfterEncrypted: encryptAmount(130),
       referenceId: null,
@@ -99,14 +100,14 @@ describe('receipt text formatting', () => {
       note: null,
     };
     const receipt = buildReceiptText(txn);
-    expect(receipt).toContain('Type:          TOP_UP');
+    expect(receipt).toContain("Type:          TOP_UP");
   });
 
-  it('shows amount formatted to 2 decimal places', () => {
+  it("shows amount formatted to 2 decimal places", () => {
     const txn: MockTxn = {
-      id: 'txn-003',
+      id: "txn-003",
       createdAt: baseDate,
-      type: 'spend',
+      type: "spend",
       amountEncrypted: encryptAmount(12.5),
       balanceAfterEncrypted: encryptAmount(87.5),
       referenceId: null,
@@ -114,14 +115,14 @@ describe('receipt text formatting', () => {
       note: null,
     };
     const receipt = buildReceiptText(txn);
-    expect(receipt).toContain('$12.50');
+    expect(receipt).toContain("$12.50");
   });
 
-  it('shows balance after formatted to 2 decimal places', () => {
+  it("shows balance after formatted to 2 decimal places", () => {
     const txn: MockTxn = {
-      id: 'txn-004',
+      id: "txn-004",
       createdAt: baseDate,
-      type: 'spend',
+      type: "spend",
       amountEncrypted: encryptAmount(10),
       balanceAfterEncrypted: encryptAmount(5.5),
       referenceId: null,
@@ -129,30 +130,30 @@ describe('receipt text formatting', () => {
       note: null,
     };
     const receipt = buildReceiptText(txn);
-    expect(receipt).toContain('Balance After: $5.50');
+    expect(receipt).toContain("Balance After: $5.50");
   });
 
-  it('includes reference line when referenceId is set', () => {
+  it("includes reference line when referenceId is set", () => {
     const txn: MockTxn = {
-      id: 'txn-005',
+      id: "txn-005",
       createdAt: baseDate,
-      type: 'spend',
+      type: "spend",
       amountEncrypted: encryptAmount(20),
       balanceAfterEncrypted: encryptAmount(80),
-      referenceId: 'fr-ref-001',
-      referenceType: 'fulfillment',
+      referenceId: "fr-ref-001",
+      referenceType: "fulfillment",
       note: null,
     };
     const receipt = buildReceiptText(txn);
-    expect(receipt).toContain('fr-ref-001');
-    expect(receipt).toContain('fulfillment');
+    expect(receipt).toContain("fr-ref-001");
+    expect(receipt).toContain("fulfillment");
   });
 
-  it('omits reference line when referenceId is null', () => {
+  it("omits reference line when referenceId is null", () => {
     const txn: MockTxn = {
-      id: 'txn-006',
+      id: "txn-006",
       createdAt: baseDate,
-      type: 'top_up',
+      type: "top_up",
       amountEncrypted: encryptAmount(50),
       balanceAfterEncrypted: encryptAmount(50),
       referenceId: null,
@@ -160,29 +161,29 @@ describe('receipt text formatting', () => {
       note: null,
     };
     const receipt = buildReceiptText(txn);
-    expect(receipt).not.toContain('Reference:');
+    expect(receipt).not.toContain("Reference:");
   });
 
-  it('includes note line when note is set', () => {
+  it("includes note line when note is set", () => {
     const txn: MockTxn = {
-      id: 'txn-007',
+      id: "txn-007",
       createdAt: baseDate,
-      type: 'top_up',
+      type: "top_up",
       amountEncrypted: encryptAmount(100),
       balanceAfterEncrypted: encryptAmount(200),
       referenceId: null,
       referenceType: null,
-      note: 'Admin manual top-up',
+      note: "Admin manual top-up",
     };
     const receipt = buildReceiptText(txn);
-    expect(receipt).toContain('Admin manual top-up');
+    expect(receipt).toContain("Admin manual top-up");
   });
 
-  it('omits note line when note is null', () => {
+  it("omits note line when note is null", () => {
     const txn: MockTxn = {
-      id: 'txn-008',
+      id: "txn-008",
       createdAt: baseDate,
-      type: 'top_up',
+      type: "top_up",
       amountEncrypted: encryptAmount(50),
       balanceAfterEncrypted: encryptAmount(50),
       referenceId: null,
@@ -190,14 +191,14 @@ describe('receipt text formatting', () => {
       note: null,
     };
     const receipt = buildReceiptText(txn);
-    expect(receipt).not.toContain('Note:');
+    expect(receipt).not.toContain("Note:");
   });
 
-  it('receipt starts and ends with separator line', () => {
+  it("receipt starts and ends with separator line", () => {
     const txn: MockTxn = {
-      id: 'txn-009',
+      id: "txn-009",
       createdAt: baseDate,
-      type: 'top_up',
+      type: "top_up",
       amountEncrypted: encryptAmount(10),
       balanceAfterEncrypted: encryptAmount(10),
       referenceId: null,
@@ -205,16 +206,16 @@ describe('receipt text formatting', () => {
       note: null,
     };
     const receipt = buildReceiptText(txn);
-    const lines = receipt.split('\n');
-    expect(lines[0]).toBe('================================');
-    expect(lines[lines.length - 1]).toBe('================================');
+    const lines = receipt.split("\n");
+    expect(lines[0]).toBe("================================");
+    expect(lines[lines.length - 1]).toBe("================================");
   });
 
-  it('includes ISO date string', () => {
+  it("includes ISO date string", () => {
     const txn: MockTxn = {
-      id: 'txn-010',
-      createdAt: new Date('2026-01-15T08:30:00.000Z'),
-      type: 'spend',
+      id: "txn-010",
+      createdAt: new Date("2026-01-15T08:30:00.000Z"),
+      type: "spend",
       amountEncrypted: encryptAmount(5),
       balanceAfterEncrypted: encryptAmount(45),
       referenceId: null,
@@ -222,7 +223,7 @@ describe('receipt text formatting', () => {
       note: null,
     };
     const receipt = buildReceiptText(txn);
-    expect(receipt).toContain('2026-01-15T08:30:00.000Z');
+    expect(receipt).toContain("2026-01-15T08:30:00.000Z");
   });
 });
 
@@ -230,39 +231,39 @@ describe('receipt text formatting', () => {
 // Transaction type validation
 // ============================================================
 
-describe('transaction type validation', () => {
-  const VALID_TYPES = ['topup', 'spend', 'compensation'];
+describe("transaction type validation", () => {
+  const VALID_TYPES = ["topup", "spend", "compensation"];
 
   function isValidTransactionType(type: string): boolean {
     return VALID_TYPES.includes(type);
   }
 
   it('accepts "topup"', () => {
-    expect(isValidTransactionType('topup')).toBe(true);
+    expect(isValidTransactionType("topup")).toBe(true);
   });
 
   it('accepts "spend"', () => {
-    expect(isValidTransactionType('spend')).toBe(true);
+    expect(isValidTransactionType("spend")).toBe(true);
   });
 
   it('accepts "compensation"', () => {
-    expect(isValidTransactionType('compensation')).toBe(true);
+    expect(isValidTransactionType("compensation")).toBe(true);
   });
 
   it('rejects "refund"', () => {
-    expect(isValidTransactionType('refund')).toBe(false);
+    expect(isValidTransactionType("refund")).toBe(false);
   });
 
-  it('rejects empty string', () => {
-    expect(isValidTransactionType('')).toBe(false);
+  it("rejects empty string", () => {
+    expect(isValidTransactionType("")).toBe(false);
   });
 
   it('rejects "SPEND" (case-sensitive)', () => {
-    expect(isValidTransactionType('SPEND')).toBe(false);
+    expect(isValidTransactionType("SPEND")).toBe(false);
   });
 
   it('rejects "transfer"', () => {
-    expect(isValidTransactionType('transfer')).toBe(false);
+    expect(isValidTransactionType("transfer")).toBe(false);
   });
 });
 
@@ -270,46 +271,48 @@ describe('transaction type validation', () => {
 // Edge-case balance arithmetic
 // ============================================================
 
-describe('edge-case balance arithmetic', () => {
+describe("edge-case balance arithmetic", () => {
   function spend(balance: number, amount: number): number {
     if (balance < amount) {
-      const err: any = new Error('Insufficient stored value balance');
-      err.code = 'INSUFFICIENT_BALANCE';
+      const err: any = new Error("Insufficient stored value balance");
+      err.code = "INSUFFICIENT_BALANCE";
       throw err;
     }
     return balance - amount;
   }
 
-  it('spending exactly the balance succeeds and results in 0', () => {
+  it("spending exactly the balance succeeds and results in 0", () => {
     expect(spend(100, 100)).toBe(0);
   });
 
-  it('spending balance + 1 cent throws INSUFFICIENT_BALANCE', () => {
-    expect(() => spend(100, 100.01)).toThrow('Insufficient stored value balance');
+  it("spending balance + 1 cent throws INSUFFICIENT_BALANCE", () => {
+    expect(() => spend(100, 100.01)).toThrow(
+      "Insufficient stored value balance",
+    );
   });
 
-  it('spending balance + 1 cent has correct error code', () => {
+  it("spending balance + 1 cent has correct error code", () => {
     try {
       spend(50, 50.01);
     } catch (e: any) {
-      expect(e.code).toBe('INSUFFICIENT_BALANCE');
+      expect(e.code).toBe("INSUFFICIENT_BALANCE");
     }
   });
 
-  it('spending 0 from any balance succeeds', () => {
+  it("spending 0 from any balance succeeds", () => {
     expect(spend(200, 0)).toBe(200);
   });
 
-  it('spending 0 from zero balance succeeds', () => {
+  it("spending 0 from zero balance succeeds", () => {
     expect(spend(0, 0)).toBe(0);
   });
 
-  it('spending 1 cent from zero balance throws', () => {
+  it("spending 1 cent from zero balance throws", () => {
     expect(() => spend(0, 0.01)).toThrow();
   });
 
-  it('spending fractional amount from sufficient balance', () => {
-    expect(spend(99.99, 49.99)).toBeCloseTo(50.00);
+  it("spending fractional amount from sufficient balance", () => {
+    expect(spend(99.99, 49.99)).toBeCloseTo(50.0);
   });
 });
 
@@ -317,46 +320,46 @@ describe('edge-case balance arithmetic', () => {
 // Top-up constraints
 // ============================================================
 
-describe('top-up amount constraint: must be > 0 and <= 10000', () => {
+describe("top-up amount constraint: must be > 0 and <= 10000", () => {
   function validateTopUp(amount: number): { valid: boolean; code?: string } {
     if (amount <= 0 || amount > 10000) {
-      return { valid: false, code: 'INVALID_AMOUNT' };
+      return { valid: false, code: "INVALID_AMOUNT" };
     }
     return { valid: true };
   }
 
-  it('accepts minimum positive amount (0.01)', () => {
+  it("accepts minimum positive amount (0.01)", () => {
     expect(validateTopUp(0.01).valid).toBe(true);
   });
 
-  it('accepts typical amount ($50)', () => {
+  it("accepts typical amount ($50)", () => {
     expect(validateTopUp(50).valid).toBe(true);
   });
 
-  it('accepts maximum allowed amount (10000)', () => {
+  it("accepts maximum allowed amount (10000)", () => {
     expect(validateTopUp(10000).valid).toBe(true);
   });
 
-  it('rejects zero', () => {
+  it("rejects zero", () => {
     const result = validateTopUp(0);
     expect(result.valid).toBe(false);
-    expect(result.code).toBe('INVALID_AMOUNT');
+    expect(result.code).toBe("INVALID_AMOUNT");
   });
 
-  it('rejects negative amount', () => {
+  it("rejects negative amount", () => {
     expect(validateTopUp(-1).valid).toBe(false);
   });
 
-  it('rejects amount just above cap (10000.01)', () => {
+  it("rejects amount just above cap (10000.01)", () => {
     expect(validateTopUp(10000.01).valid).toBe(false);
   });
 
-  it('rejects amount far above cap', () => {
+  it("rejects amount far above cap", () => {
     expect(validateTopUp(99999).valid).toBe(false);
   });
 
-  it('error code is INVALID_AMOUNT when rejected', () => {
-    expect(validateTopUp(-50).code).toBe('INVALID_AMOUNT');
+  it("error code is INVALID_AMOUNT when rejected", () => {
+    expect(validateTopUp(-50).code).toBe("INVALID_AMOUNT");
   });
 });
 
@@ -364,24 +367,24 @@ describe('top-up amount constraint: must be > 0 and <= 10000', () => {
 // Encrypt / decrypt round-trip for amounts used in receipts
 // ============================================================
 
-describe('encrypt/decrypt round-trip for receipt amounts', () => {
-  it('$0.00 round-trips correctly', () => {
+describe("encrypt/decrypt round-trip for receipt amounts", () => {
+  it("$0.00 round-trips correctly", () => {
     expect(decryptAmount(encryptAmount(0))).toBe(0);
   });
 
-  it('$100.00 round-trips correctly', () => {
+  it("$100.00 round-trips correctly", () => {
     expect(decryptAmount(encryptAmount(100))).toBe(100);
   });
 
-  it('$9999.99 round-trips correctly', () => {
+  it("$9999.99 round-trips correctly", () => {
     expect(decryptAmount(encryptAmount(9999.99))).toBe(9999.99);
   });
 
-  it('$0.01 round-trips correctly', () => {
+  it("$0.01 round-trips correctly", () => {
     expect(decryptAmount(encryptAmount(0.01))).toBe(0.01);
   });
 
-  it('amount is stored as fixed 2-decimal string', () => {
+  it("amount is stored as fixed 2-decimal string", () => {
     // encryptAmount calls toFixed(2), so $5.5 becomes "5.50"
     const enc = encryptAmount(5.5);
     expect(decryptAmount(enc)).toBe(5.5);
@@ -392,85 +395,83 @@ describe('encrypt/decrypt round-trip for receipt amounts', () => {
 // Membership tier schema
 // ============================================================
 
-describe('createTierSchema validation', () => {
-  const { createTierSchema } = await import('../src/modules/membership/membership.service');
-
-  it('accepts valid tier', () => {
+describe("createTierSchema validation", () => {
+  it("accepts valid tier", () => {
     const result = createTierSchema.safeParse({
-      name: 'Gold',
-      discountPercent: 10.00,
+      name: "Gold",
+      discountPercent: 10.0,
       pointThreshold: 500,
-      benefits: 'Priority support and 10% discount',
+      benefits: "Priority support and 10% discount",
     });
     expect(result.success).toBe(true);
   });
 
-  it('rejects discountPercent above 100', () => {
+  it("rejects discountPercent above 100", () => {
     const result = createTierSchema.safeParse({
-      name: 'Platinum',
+      name: "Platinum",
       discountPercent: 101,
       pointThreshold: 1000,
-      benefits: 'Full discount',
+      benefits: "Full discount",
     });
     expect(result.success).toBe(false);
   });
 
-  it('rejects negative discountPercent', () => {
+  it("rejects negative discountPercent", () => {
     const result = createTierSchema.safeParse({
-      name: 'Silver',
+      name: "Silver",
       discountPercent: -5,
       pointThreshold: 100,
-      benefits: 'Some benefits',
+      benefits: "Some benefits",
     });
     expect(result.success).toBe(false);
   });
 
-  it('rejects negative pointThreshold', () => {
+  it("rejects negative pointThreshold", () => {
     const result = createTierSchema.safeParse({
-      name: 'Bronze',
+      name: "Bronze",
       discountPercent: 5,
       pointThreshold: -1,
-      benefits: 'Entry level',
+      benefits: "Entry level",
     });
     expect(result.success).toBe(false);
   });
 
-  it('accepts pointThreshold of 0 (entry tier)', () => {
+  it("accepts pointThreshold of 0 (entry tier)", () => {
     const result = createTierSchema.safeParse({
-      name: 'Entry',
+      name: "Entry",
       discountPercent: 0,
       pointThreshold: 0,
-      benefits: 'Basic membership',
+      benefits: "Basic membership",
     });
     expect(result.success).toBe(true);
   });
 
-  it('rejects empty name', () => {
+  it("rejects empty name", () => {
     const result = createTierSchema.safeParse({
-      name: '',
+      name: "",
       discountPercent: 5,
       pointThreshold: 0,
-      benefits: 'Benefits here',
+      benefits: "Benefits here",
     });
     expect(result.success).toBe(false);
   });
 
-  it('rejects empty benefits', () => {
+  it("rejects empty benefits", () => {
     const result = createTierSchema.safeParse({
-      name: 'Gold',
+      name: "Gold",
       discountPercent: 5,
       pointThreshold: 0,
-      benefits: '',
+      benefits: "",
     });
     expect(result.success).toBe(false);
   });
 
-  it('accepts non-integer discountPercent with 2 decimal places', () => {
+  it("accepts non-integer discountPercent with 2 decimal places", () => {
     const result = createTierSchema.safeParse({
-      name: 'Silver',
-      discountPercent: 7.50,
+      name: "Silver",
+      discountPercent: 7.5,
       pointThreshold: 200,
-      benefits: '7.5% discount',
+      benefits: "7.5% discount",
     });
     expect(result.success).toBe(true);
   });

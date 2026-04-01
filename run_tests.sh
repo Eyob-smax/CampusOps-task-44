@@ -18,6 +18,17 @@ print_header() {
 }
 
 COMPOSE_TEST="docker compose -f docker-compose.yml -f docker-compose.test.yml"
+PROJECT_NAME="campusops-test"
+COMPOSE_TEST="docker compose -p ${PROJECT_NAME} -f docker-compose.yml -f docker-compose.test.yml"
+
+cleanup() {
+  ${COMPOSE_TEST} down -v --remove-orphans >/dev/null 2>&1 || true
+}
+
+trap cleanup EXIT
+
+# Start from a clean isolated test stack every run.
+cleanup
 
 run_suite() {
   local name="$1"
@@ -40,9 +51,12 @@ run_suite "Frontend Unit Tests (Vitest)" \
 run_suite "Unit Tests (Vitest)" \
   "$COMPOSE_TEST run --rm --build --no-deps backend-unit-test-runner"
 
-# API functional tests (Supertest/Jest — requires db + redis + backend)
+# API functional tests (Supertest/Jest — requires db + redis)
+run_suite "Prepare API Test Dependencies (db + redis)" \
+  "$COMPOSE_TEST up -d --build --wait db redis"
+
 run_suite "API Functional Tests (Supertest)" \
-  "$COMPOSE_TEST run --rm --build api-test-runner"
+  "$COMPOSE_TEST run --rm --build --no-deps api-test-runner"
 
 # Print summary
 echo ""
