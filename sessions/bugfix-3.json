@@ -1,0 +1,42 @@
+{
+  "id": "bugfix-3",
+  "title": "Docker build infrastructure issues — missing files, wrong Dockerfile stages",
+  "severity": "high",
+  "status": "resolved",
+  "dateFound": "2026-04-01",
+  "dateResolved": "2026-04-01",
+  "affectedFiles": [
+    "backend/Dockerfile",
+    "docker-compose.yml",
+    "docker-compose.test.yml"
+  ],
+  "description": "Several Docker infrastructure issues prevented successful builds and test execution.",
+  "errors": [
+    {
+      "file": "backend/Dockerfile",
+      "error": "apk add fails with stale package index",
+      "cause": "Alpine package index was outdated in the Docker layer cache, causing 'apk add --no-cache' to fail on package resolution.",
+      "fix": "Added 'apk update' before 'apk add --no-cache' to refresh the package index."
+    },
+    {
+      "file": "backend/Dockerfile",
+      "error": "Seed script missing from compiled output — 'node dist/database/seeders/seed.js' fails",
+      "cause": "The Dockerfile only copied 'src/' to the builder stage, but tsconfig.json includes 'database/**/*' in compilation. The seed script at 'database/seeders/seed.ts' was never copied, so it was never compiled to dist/.",
+      "fix": "Added 'COPY database ./database' to the builder stage so the seed TypeScript is compiled."
+    },
+    {
+      "file": "docker-compose.test.yml",
+      "error": "API test runner cannot find or compile test source files",
+      "cause": "The test runner container was built from the backend Dockerfile (production stage) which only contains dist/ and node_modules/. The API tests use ts-jest to compile TypeScript on-the-fly and import from '../../src/app', but src/ was not available in the container.",
+      "fix": "Added volume mounts for backend/src, jest.config.js, and tsconfig.json into the test runner container so ts-jest can compile tests against source."
+    },
+    {
+      "file": "docker-compose.test.yml",
+      "error": "Test runner missing --runInBand flag causing flaky parallel test execution",
+      "cause": "Jest default parallel execution caused race conditions with shared database state in integration tests.",
+      "fix": "Added '--runInBand' to the jest command for deterministic sequential test execution."
+    }
+  ],
+  "rootCause": "Docker build context was incomplete (missing database/ directory) and test runner container lacked source files needed by ts-jest for on-the-fly compilation.",
+  "impact": "Backend Docker image failed to build, and even when built, the seeder wouldn't run and tests couldn't execute."
+}

@@ -1,0 +1,132 @@
+# ============================================================
+# CampusOps Fulfillment & Operations Platform
+# Startup: docker compose up  (from repo/ directory)
+# All services communicate over campusops-net bridge.
+# Ports exposed to host: frontend :80, backend :6000.
+# Frontend calls backend directly on host port 6000.
+# ============================================================
+
+networks:
+  campusops-net:
+    driver: bridge
+
+volumes:
+  db-data:
+  redis-data:
+  storage-data:
+  logs-data:
+  backups-data:
+
+secrets:
+  encryption_key:
+    file: ./secrets/encryption_key.txt
+  db_password:
+    file: ./secrets/db_password.txt
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt
+
+services:
+  # ----------------------------------------------------------
+  # MySQL 8 — primary relational datastore
+  # Internal port: 3306
+  # ----------------------------------------------------------
+  db:
+    image: mysql:8.0
+    container_name: campusops-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db_password
+      MYSQL_DATABASE: campusops
+      MYSQL_USER: campusops
+      MYSQL_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      - db-data:/var/lib/mysql
+      - ./backend/database/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - campusops-net
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h 127.0.0.1 -u campusops -p$$(cat /run/secrets/db_password) --silent",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  # ----------------------------------------------------------
+  # Redis 7 — BullMQ queue broker, rate limiting, idempotency
+  # Internal port: 6379
+  # ----------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: campusops-redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - campusops-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # Backend — Express + TypeScript + Socket.IO + BullMQ
+  # Exposes host port 6000 (container port 3000) for direct LAN access / debugging
+  # DATABASE_URL assembled from parts by docker-entrypoint.sh
+  # ----------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: campusops-backend
+    restart: unless-stopped
+    secrets:
+      - encryption_key
+      - db_password
+      - jwt_secret
+    volumes:
+      - storage-data:/data/storage
+      - logs-data:/logs
+      - backups-data:/backups
+    ports:
+      - "6000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - campusops-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 45s
+
+  # ----------------------------------------------------------
+  # Frontend — Vue 3 production build served by Node static server
+  # Exposes port 80; frontend calls backend directly on port 6000
+  # ----------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_BACKEND_PORT: "6000"
+    container_name: campusops-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    networks:
+      - campusops-net
+    depends_on:
+      backend:
+        condition: service_healthy

@@ -1,0 +1,51 @@
+{
+  "id": "bugfix-1",
+  "title": "Frontend TypeScript compilation errors preventing Docker build",
+  "severity": "critical",
+  "status": "resolved",
+  "dateFound": "2026-04-01",
+  "dateResolved": "2026-04-01",
+  "affectedFiles": [
+    "frontend/src/api/auth.ts",
+    "frontend/src/composables/useClassroomSocket.ts",
+    "frontend/src/views/admin/SystemSettingsView.vue",
+    "frontend/src/views/parking/ParkingOperationsView.vue"
+  ],
+  "description": "The frontend Docker build failed with multiple TypeScript errors that prevented the Vue 3 app from compiling.",
+  "errors": [
+    {
+      "file": "frontend/src/api/auth.ts",
+      "lines": [19, 23, 31],
+      "error": "TS2322: Type 'Promise<AxiosResponse<T>>' is not assignable to type 'Promise<T>'",
+      "cause": "The axios response interceptor in client.ts unwraps response.data, but the TypeScript generic on apiClient.post<T>() still returns AxiosResponse<T>. The return type didn't match the declared Promise<LoginResponse | TokenPair | AuthUser>.",
+      "fix": "Cast return values using 'as unknown as Promise<T>' to match the runtime behavior where the interceptor already unwraps response.data."
+    },
+    {
+      "file": "frontend/src/composables/useClassroomSocket.ts",
+      "line": 4,
+      "error": "TS6192: All imports in import declaration are unused",
+      "cause": "Imported 'Classroom' and 'Anomaly' types from '../api/classroom' but never used them — event payload types were defined locally in the same file.",
+      "fix": "Removed the unused import statement."
+    },
+    {
+      "file": "frontend/src/views/admin/SystemSettingsView.vue",
+      "line": 202,
+      "error": "TS6133: 'computed' is declared but its value is never read",
+      "cause": "Imported 'computed' from 'vue' but never used it in the component's <script setup>.",
+      "fix": "Removed 'computed' from the import statement."
+    },
+    {
+      "file": "frontend/src/views/parking/ParkingOperationsView.vue",
+      "lines": [209, 281, 319],
+      "errors": [
+        "TS6133: 'reactive' is declared but its value is never read",
+        "TS6133: 'lotId' is declared but its value is never read",
+        "TS6133: 'res' is declared but its value is never read"
+      ],
+      "cause": "Three unused declarations: (1) 'reactive' imported from Vue but unused, (2) 'lotId' parameter in showAlertsFor() not referenced, (3) 'res' variable from parkingAlertApi.close() assigned but never read.",
+      "fix": "Removed 'reactive' from import, prefixed unused param as '_lotId', and removed the unused 'res' variable assignment."
+    }
+  ],
+  "rootCause": "Strict TypeScript compilation (vue-tsc) caught type mismatches and unused declarations that were not flagged during development but blocked the production Docker build.",
+  "impact": "Frontend Docker image could not be built, blocking the entire docker compose up workflow."
+}

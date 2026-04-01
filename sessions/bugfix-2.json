@@ -1,0 +1,81 @@
+{
+  "id": "bugfix-2",
+  "title": "Backend TypeScript compilation errors preventing Docker build",
+  "severity": "critical",
+  "status": "resolved",
+  "dateFound": "2026-04-01",
+  "dateResolved": "2026-04-01",
+  "affectedFiles": [
+    "backend/src/jobs/index.ts",
+    "backend/src/lib/circuit-breaker.ts",
+    "backend/src/middleware/rate-limit.middleware.ts",
+    "backend/src/modules/jobs/job.controller.ts",
+    "backend/src/modules/classroom/anomaly.service.ts",
+    "backend/src/modules/classroom/classroom.service.ts",
+    "backend/src/modules/parking/alert.service.ts",
+    "backend/src/modules/parking/parking.service.ts",
+    "backend/src/modules/fulfillment/fulfillment.service.ts",
+    "backend/src/modules/stored-value/stored-value.service.ts"
+  ],
+  "description": "The backend Docker build failed with 20+ TypeScript compilation errors across multiple service files, preventing the Express server from being built.",
+  "errors": [
+    {
+      "file": "backend/src/jobs/index.ts",
+      "lines": [56, 70],
+      "error": "TS2353: 'cron' does not exist in type 'RepeatOptions'",
+      "cause": "BullMQ v4+ renamed the 'cron' property to 'pattern' in RepeatOptions.",
+      "fix": "Changed 'cron' to 'pattern' in both RepeatOptions objects."
+    },
+    {
+      "file": "backend/src/lib/circuit-breaker.ts",
+      "lines": [1, 36],
+      "errors": [
+        "TS7016: Could not find a declaration file for module 'opossum'",
+        "TS7006: Parameter 'result' implicitly has an 'any' type"
+      ],
+      "cause": "The 'opossum' circuit breaker library does not ship TypeScript declarations, and strict mode requires explicit types.",
+      "fix": "Added @ts-ignore for the import and explicit 'any' type annotation on the 'result' parameter."
+    },
+    {
+      "file": "backend/src/middleware/rate-limit.middleware.ts",
+      "line": 11,
+      "error": "TS2322: Type 'Promise<unknown>' is not assignable to type 'Promise<RedisReply>'",
+      "cause": "The sendCommand function's return type didn't match the expected SendCommandFn signature from the rate-limit library.",
+      "fix": "Cast the sendCommand function with 'as any' to satisfy the type constraint."
+    },
+    {
+      "file": "backend/src/modules/jobs/job.controller.ts",
+      "line": 80,
+      "error": "TS2322: Type 'null' is not assignable to type 'string | undefined'",
+      "cause": "Used null where the Prisma schema expected string | undefined.",
+      "fix": "Changed 'null' to 'undefined'."
+    },
+    {
+      "files": [
+        "backend/src/modules/classroom/anomaly.service.ts",
+        "backend/src/modules/classroom/classroom.service.ts",
+        "backend/src/modules/parking/alert.service.ts",
+        "backend/src/modules/parking/parking.service.ts"
+      ],
+      "lines": "multiple (9 locations total)",
+      "error": "TS2339: Property 'where' does not exist on type (Prisma query args)",
+      "cause": "Prisma 5.x query arg types are optional (T | undefined), so accessing .where on them fails type-checking when cast via Parameters<typeof prisma.X.Y>[0]['where'].",
+      "fix": "Replaced the complex type casts with simple 'as any' casts for the where clauses."
+    },
+    {
+      "files": [
+        "backend/src/modules/fulfillment/fulfillment.service.ts",
+        "backend/src/modules/stored-value/stored-value.service.ts"
+      ],
+      "lines": [233, 265, 269, 48, 92],
+      "errors": [
+        "TS2554: Expected 5-6 arguments, but got 1",
+        "TS2322: Type 'string' is not assignable to type 'FulfillmentStatus'"
+      ],
+      "cause": "writeAuditEntry() was called with a single object argument instead of positional args (actorId, action, entityType, entityId, detail). Additionally, a plain string was passed where the Prisma FulfillmentStatus enum was expected.",
+      "fix": "Converted writeAuditEntry calls to use positional arguments. Added FulfillmentStatus import and cast 'status as FulfillmentStatus' for the Prisma update."
+    }
+  ],
+  "rootCause": "Multiple type incompatibilities accumulated from library version mismatches (BullMQ v4, Prisma 5, opossum without types) and incorrect function call signatures in service layer code.",
+  "impact": "Backend Docker image could not be built, blocking all services from starting."
+}

@@ -1,0 +1,859 @@
+// ============================================================
+// CampusOps — Prisma Schema  (MySQL 8)
+// Managed by: prisma migrate deploy
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// Auth & Users
+// ============================================================
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique @db.VarChar(80)
+  passwordHash String   @db.VarChar(255)
+  role         UserRole
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  auditLogs         AuditLog[]
+  assignedAnomalies AnomalyEvent[]    @relation("AnomalyAssignee")
+  resolvedAnomalies AnomalyEvent[]    @relation("AnomalyResolver")
+  acknowledgedAnom  AnomalyEvent[]    @relation("AnomalyAcknowledger")
+  claimedAlerts     ParkingAlert[]    @relation("AlertClaimer")
+  closedAlerts      ParkingAlert[]    @relation("AlertCloser")
+  approvedComps     Compensation[]    @relation("CompApprover")
+
+  @@map("users")
+}
+
+enum UserRole {
+  administrator
+  operations_manager
+  classroom_supervisor
+  customer_service_agent
+  auditor
+}
+
+// ============================================================
+// Audit Log
+// ============================================================
+
+model AuditLog {
+  id              String   @id @default(uuid())
+  actorId         String
+  actor           User     @relation(fields: [actorId], references: [id])
+  action          String   @db.VarChar(120)
+  entityType      String   @db.VarChar(80)
+  entityId        String   @db.VarChar(36)
+  encryptedDetail String   @db.LongText
+  ipAddress       String?  @db.VarChar(45)
+  createdAt       DateTime @default(now())
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================================
+// Integration Keys (API signing for hardware/carrier connectors)
+// ============================================================
+
+model IntegrationKey {
+  id          String   @id @default(uuid())
+  name        String   @unique @db.VarChar(100)
+  keyId       String   @unique @db.VarChar(64)
+  secretHash  String   @db.VarChar(255) // Encrypted integration signing secret (legacy column name retained)
+  scope       String   @db.VarChar(50) // classroom | parking | carrier
+  isActive    Boolean  @default(true)
+  lastUsedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([keyId])
+  @@map("integration_keys")
+}
+
+// ============================================================
+// Master Data
+// ============================================================
+
+model Department {
+  id        String   @id @default(uuid())
+  name      String   @unique @db.VarChar(120)
+  code      String   @unique @db.VarChar(20)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  courses Course[]
+  classes Class[]
+
+  @@map("departments")
+}
+
+model Semester {
+  id        String   @id @default(uuid())
+  name      String   @unique @db.VarChar(80)
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  classes Class[]
+
+  @@map("semesters")
+}
+
+model Course {
+  id           String     @id @default(uuid())
+  code         String     @unique @db.VarChar(20)
+  name         String     @db.VarChar(200)
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  classes Class[]
+
+  @@index([departmentId])
+  @@map("courses")
+}
+
+model Class {
+  id           String     @id @default(uuid())
+  name         String     @db.VarChar(200)
+  courseId     String
+  course       Course     @relation(fields: [courseId], references: [id])
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  semesterId   String
+  semester     Semester   @relation(fields: [semesterId], references: [id])
+  roomNumber   String?    @db.VarChar(20)
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  classroom Classroom?
+
+  @@unique([courseId, semesterId, roomNumber])
+  @@index([semesterId])
+  @@index([departmentId])
+  @@map("classes")
+}
+
+model Student {
+  id                   String          @id @default(uuid())
+  studentNumber        String          @unique @db.VarChar(30)
+  fullName             String          @db.VarChar(200)
+  email                String          @unique @db.VarChar(200)
+  phone                String?         @db.VarChar(20)
+  departmentId         String?
+  membershipTierId     String?
+  membershipTier       MembershipTier? @relation(fields: [membershipTierId], references: [id])
+  growthPoints         Int             @default(0)
+  storedValueEncrypted String?         @db.Text
+  isActive             Boolean         @default(true)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  fulfillmentRequests  FulfillmentRequest[]
+  afterSalesTickets    AfterSalesTicket[]
+  storedValueTx        StoredValueTransaction[]
+
+  @@index([membershipTierId])
+  @@map("students")
+}
+
+// ============================================================
+// Classroom Operations
+// ============================================================
+
+model Classroom {
+  id                    String          @id @default(uuid())
+  classId               String          @unique
+  class                 Class           @relation(fields: [classId], references: [id])
+  hardwareNodeId        String          @unique @db.VarChar(100)
+  status                ClassroomStatus @default(offline)
+  recognitionConfidence Float?
+  lastHeartbeatAt       DateTime?
+  confidenceThreshold   Float           @default(0.70)
+  isActive              Boolean         @default(true)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  anomalyEvents AnomalyEvent[]
+
+  @@map("classrooms")
+}
+
+enum ClassroomStatus {
+  online
+  offline
+  degraded
+}
+
+model AnomalyEvent {
+  id               String             @id @default(uuid())
+  classroomId      String
+  classroom        Classroom          @relation(fields: [classroomId], references: [id])
+  type             String             @db.VarChar(80)
+  description      String             @db.Text
+  status           AnomalyEventStatus @default(open)
+  acknowledgedById String?
+  acknowledgedBy   User?              @relation("AnomalyAcknowledger", fields: [acknowledgedById], references: [id])
+  acknowledgedAt   DateTime?
+  assignedToId     String?
+  assignedTo       User?              @relation("AnomalyAssignee", fields: [assignedToId], references: [id])
+  resolvedById     String?
+  resolvedBy       User?              @relation("AnomalyResolver", fields: [resolvedById], references: [id])
+  resolutionNote   String?            @db.Text
+  escalatedAt      DateTime?
+  resolvedAt       DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  timeline AnomalyTimelineEntry[]
+
+  @@index([classroomId])
+  @@index([status])
+  @@index([assignedToId])
+  @@index([createdAt])
+  @@map("anomaly_events")
+}
+
+model AnomalyTimelineEntry {
+  id        String       @id @default(uuid())
+  anomalyId String
+  anomaly   AnomalyEvent @relation(fields: [anomalyId], references: [id])
+  actorId   String?      @db.VarChar(36)
+  action    String       @db.VarChar(120)
+  note      String?      @db.Text
+  createdAt DateTime     @default(now())
+
+  @@index([anomalyId])
+  @@map("anomaly_timeline_entries")
+}
+
+enum AnomalyEventStatus {
+  open
+  acknowledged
+  assigned
+  resolved
+  escalated
+}
+
+// ============================================================
+// Parking Operations
+// ============================================================
+
+model ParkingLot {
+  id          String @id @default(uuid())
+  name        String @unique @db.VarChar(100)
+  totalSpaces Int
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sessions ParkingSession[]
+  alerts   ParkingAlert[]
+
+  @@map("parking_lots")
+}
+
+model ParkingSession {
+  id          String     @id @default(uuid())
+  lotId       String
+  lot         ParkingLot @relation(fields: [lotId], references: [id])
+  plateNumber String?    @db.VarChar(20)
+  entryAt     DateTime   @default(now())
+  exitAt      DateTime?
+  isSettled   Boolean    @default(false)
+
+  @@index([lotId])
+  @@index([plateNumber])
+  @@index([entryAt])
+  @@map("parking_sessions")
+}
+
+model ParkingAlert {
+  id          String             @id @default(uuid())
+  lotId       String
+  lot         ParkingLot         @relation(fields: [lotId], references: [id])
+  type        ParkingAlertType
+  status      ParkingAlertStatus @default(open)
+  description String             @db.Text
+  claimedById String?
+  claimedBy   User?              @relation("AlertClaimer", fields: [claimedById], references: [id])
+  claimedAt   DateTime?
+  closedById  String?
+  closedBy    User?              @relation("AlertCloser", fields: [closedById], references: [id])
+  closureNote String?            @db.Text
+  escalatedAt DateTime?
+  closedAt    DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  slaDeadlineAt DateTime?
+  timeline      ParkingAlertTimelineEntry[]
+
+  @@index([lotId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("parking_alerts")
+}
+
+model ParkingAlertTimelineEntry {
+  id        String       @id @default(uuid())
+  alertId   String
+  alert     ParkingAlert @relation(fields: [alertId], references: [id])
+  actorId   String?      @db.VarChar(36)
+  action    String       @db.VarChar(120)
+  note      String?      @db.Text
+  createdAt DateTime     @default(now())
+
+  @@index([alertId])
+  @@map("parking_alert_timeline_entries")
+}
+
+enum ParkingAlertType {
+  no_plate_captured
+  overtime
+  unsettled_session
+  duplicate_plate
+  inconsistent_entry_exit
+}
+
+enum ParkingAlertStatus {
+  open
+  claimed
+  closed
+  escalated
+}
+
+// ============================================================
+// Warehouse & Carrier
+// ============================================================
+
+model Warehouse {
+  id        String   @id @default(uuid())
+  name      String   @unique @db.VarChar(120)
+  address   String   @db.VarChar(500)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shipments Shipment[]
+
+  @@map("warehouses")
+}
+
+model Carrier {
+  id                String   @id @default(uuid())
+  name              String   @unique @db.VarChar(100)
+  connectorUrl      String   @db.VarChar(500)
+  apiKeyEncrypted   String   @db.Text
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  shipments Shipment[]
+
+  @@map("carriers")
+}
+
+model DeliveryZone {
+  id         String   @id @default(uuid())
+  name       String   @unique @db.VarChar(100)
+  regionCode String   @db.VarChar(10)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  zipCodes          DeliveryZoneZip[]
+  shippingTemplates ShippingFeeTemplate[]
+
+  @@map("delivery_zones")
+}
+
+model DeliveryZoneZip {
+  id               String       @id @default(uuid())
+  zoneId           String
+  zone             DeliveryZone @relation(fields: [zoneId], references: [id])
+  zipCode          String       @db.VarChar(10)
+  isNonServiceable Boolean      @default(false)
+
+  @@unique([zoneId, zipCode])
+  @@index([zipCode])
+  @@map("delivery_zone_zips")
+}
+
+model ShippingFeeTemplate {
+  id           String       @id @default(uuid())
+  name         String       @db.VarChar(120)
+  zoneId       String
+  zone         DeliveryZone @relation(fields: [zoneId], references: [id])
+  tier         String       @db.VarChar(30)
+  baseFee      Decimal      @db.Decimal(8, 2)
+  baseWeightLb Decimal      @db.Decimal(6, 2)
+  perLbFee     Decimal      @db.Decimal(8, 2)
+  maxItems     Int?
+  perItemFee   Decimal?     @db.Decimal(8, 2)
+  surchargeAk  Decimal      @db.Decimal(8, 2) @default(0)
+  surchargeHi  Decimal      @db.Decimal(8, 2) @default(0)
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([zoneId, tier, name])
+  @@index([zoneId])
+  @@map("shipping_fee_templates")
+}
+
+// ============================================================
+// Membership
+// ============================================================
+
+model MembershipTier {
+  id              String   @id @default(uuid())
+  name            String   @unique @db.VarChar(80)
+  discountPercent Decimal  @db.Decimal(5, 2)
+  pointThreshold  Int      @default(0)
+  benefits        String   @db.Text
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  students Student[]
+  coupons  Coupon[]
+
+  @@map("membership_tiers")
+}
+
+model Coupon {
+  id                String             @id @default(uuid())
+  code              String             @unique @db.VarChar(40)
+  discountType      CouponDiscountType
+  discountValue     Decimal            @db.Decimal(8, 2)
+  minimumOrderValue Decimal?           @db.Decimal(8, 2)
+  tierId            String?
+  tier              MembershipTier?    @relation(fields: [tierId], references: [id])
+  isSingleUse       Boolean            @default(false)
+  usageCount        Int                @default(0)
+  maxUsage          Int?
+  expiresAt         DateTime?
+  isActive          Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+
+  fulfillmentRequests FulfillmentRequest[]
+
+  @@index([code])
+  @@index([tierId])
+  @@map("coupons")
+}
+
+enum CouponDiscountType {
+  flat
+  percent
+}
+
+// ============================================================
+// Fulfillment
+// ============================================================
+
+model FulfillmentRequest {
+  id              String            @id @default(uuid())
+  studentId       String
+  student         Student           @relation(fields: [studentId], references: [id])
+  status          FulfillmentStatus @default(draft)
+  couponId        String?
+  coupon          Coupon?           @relation(fields: [couponId], references: [id])
+  subtotal        Decimal           @db.Decimal(10, 2)
+  discountAmount  Decimal           @db.Decimal(10, 2) @default(0)
+  shippingFee     Decimal           @db.Decimal(10, 2) @default(0)
+  totalAmount     Decimal           @db.Decimal(10, 2)
+  storedValueUsed Decimal           @db.Decimal(10, 2) @default(0)
+  pointsEarned    Int               @default(0)
+  idempotencyKey  String?           @unique @db.VarChar(36)
+  receiptNumber   String?           @unique @db.VarChar(30)
+  notes           String?           @db.Text
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  items    FulfillmentItem[]
+  shipment Shipment?
+
+  @@index([studentId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("fulfillment_requests")
+}
+
+enum FulfillmentStatus {
+  draft
+  pending
+  processing
+  shipped
+  delivered
+  cancelled
+}
+
+model FulfillmentItem {
+  id                   String             @id @default(uuid())
+  fulfillmentRequestId String
+  fulfillmentRequest   FulfillmentRequest @relation(fields: [fulfillmentRequestId], references: [id])
+  description          String             @db.VarChar(500)
+  quantity             Int                @default(1)
+  unitPrice            Decimal            @db.Decimal(10, 2)
+  weightLb             Decimal?           @db.Decimal(6, 2)
+
+  @@index([fulfillmentRequestId])
+  @@map("fulfillment_items")
+}
+
+// ============================================================
+// Stored Value Transactions
+// ============================================================
+
+model StoredValueTransaction {
+  id           String                  @id @default(uuid())
+  studentId    String
+  student      Student                 @relation(fields: [studentId], references: [id])
+  type         StoredValueTxType
+  amountEncrypted String              @db.Text
+  balanceAfterEncrypted String        @db.Text
+  referenceId  String?                @db.VarChar(36)
+  referenceType String?               @db.VarChar(50)
+  note         String?                @db.VarChar(255)
+  createdAt    DateTime               @default(now())
+
+  @@index([studentId])
+  @@index([createdAt])
+  @@map("stored_value_transactions")
+}
+
+enum StoredValueTxType {
+  top_up
+  spend
+  refund
+  adjustment
+}
+
+// ============================================================
+// Compensation Rules
+// ============================================================
+
+model CompensationRule {
+  id           String              @id @default(uuid())
+  condition    String              @db.VarChar(200)
+  ticketType   AfterSalesTicketType
+  minDelayHours Int?
+  suggestedAmount Decimal          @db.Decimal(10, 2)
+  capAmount    Decimal             @db.Decimal(10, 2)
+  compensationType CompensationType
+  isActive     Boolean             @default(true)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@map("compensation_rules")
+}
+
+// ============================================================
+// Shipment & Parcels
+// ============================================================
+
+model Shipment {
+  id                   String            @id @default(uuid())
+  fulfillmentRequestId String            @unique
+  fulfillmentRequest   FulfillmentRequest @relation(fields: [fulfillmentRequestId], references: [id])
+  warehouseId          String
+  warehouse            Warehouse         @relation(fields: [warehouseId], references: [id])
+  carrierId            String
+  carrier              Carrier           @relation(fields: [carrierId], references: [id])
+  status               ShipmentStatus    @default(pending)
+  estimatedDeliveryAt  DateTime?
+  deliveredAt          DateTime?
+  lastSyncAt           DateTime?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  parcels           Parcel[]
+  afterSalesTickets AfterSalesTicket[]
+
+  @@index([carrierId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("shipments")
+}
+
+enum ShipmentStatus {
+  pending
+  in_transit
+  out_for_delivery
+  delivered
+  exception
+  returned
+}
+
+model Parcel {
+  id             String         @id @default(uuid())
+  shipmentId     String
+  shipment       Shipment       @relation(fields: [shipmentId], references: [id])
+  trackingNumber String         @unique @db.VarChar(100)
+  status         ShipmentStatus @default(pending)
+  weightLb       Decimal?       @db.Decimal(6, 2)
+  description    String?        @db.VarChar(500)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  afterSalesTickets AfterSalesTicket[]
+
+  @@index([shipmentId])
+  @@map("parcels")
+}
+
+// ============================================================
+// After-Sales Tickets
+// ============================================================
+
+model AfterSalesTicket {
+  id            String                 @id @default(uuid())
+  studentId     String
+  student       Student                @relation(fields: [studentId], references: [id])
+  shipmentId    String?
+  shipment      Shipment?              @relation(fields: [shipmentId], references: [id])
+  parcelId      String?
+  parcel        Parcel?                @relation(fields: [parcelId], references: [id])
+  type          AfterSalesTicketType
+  status        AfterSalesTicketStatus @default(open)
+  description   String                 @db.Text
+  slaDeadlineAt DateTime
+  resolvedAt    DateTime?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  evidenceFiles TicketEvidence[]
+  timeline      TicketTimelineEntry[]
+  compensations Compensation[]
+
+  @@index([studentId])
+  @@index([shipmentId])
+  @@index([parcelId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("after_sales_tickets")
+}
+
+enum AfterSalesTicketType {
+  delay
+  dispute
+  lost_item
+}
+
+enum AfterSalesTicketStatus {
+  open
+  under_review
+  pending_approval
+  resolved
+  closed
+}
+
+model TicketEvidence {
+  id         String           @id @default(uuid())
+  ticketId   String
+  ticket     AfterSalesTicket @relation(fields: [ticketId], references: [id])
+  type       EvidenceType
+  filePath   String?          @db.VarChar(500)
+  fileHash   String?          @db.VarChar(64)
+  textNote   String?          @db.Text
+  uploadedAt DateTime         @default(now())
+
+  @@index([ticketId])
+  @@map("ticket_evidence")
+}
+
+enum EvidenceType {
+  photo
+  text
+}
+
+model TicketTimelineEntry {
+  id        String           @id @default(uuid())
+  ticketId  String
+  ticket    AfterSalesTicket @relation(fields: [ticketId], references: [id])
+  actorId   String?          @db.VarChar(36)
+  action    String           @db.VarChar(120)
+  note      String?          @db.Text
+  createdAt DateTime         @default(now())
+
+  @@index([ticketId])
+  @@map("ticket_timeline_entries")
+}
+
+model Compensation {
+  id           String             @id @default(uuid())
+  ticketId     String
+  ticket       AfterSalesTicket   @relation(fields: [ticketId], references: [id])
+  amount       Decimal            @db.Decimal(10, 2)
+  type         CompensationType
+  status       CompensationStatus @default(suggested)
+  approvedById String?
+  approvedBy   User?              @relation("CompApprover", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
+  note         String?            @db.Text
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([ticketId])
+  @@map("compensations")
+}
+
+enum CompensationType {
+  credit
+  refund
+  replacement
+}
+
+enum CompensationStatus {
+  suggested
+  approved
+  rejected
+  applied
+}
+
+// ============================================================
+// Observability
+// ============================================================
+
+model AlertThreshold {
+  id         String   @id @default(uuid())
+  metricName String   @unique @db.VarChar(100)
+  operator   String   @db.VarChar(4)
+  value      Float
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("alert_thresholds")
+}
+
+model AlertHistory {
+  id             String   @id @default(uuid())
+  metricName     String   @db.VarChar(100)
+  value          Float
+  threshold      Float
+  message        String   @db.VarChar(500)
+  isAcknowledged Boolean  @default(false)
+  acknowledgedAt DateTime?
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([isAcknowledged])
+  @@map("alert_history")
+}
+
+model MetricsSnapshot {
+  id          String   @id @default(uuid())
+  metricName  String   @db.VarChar(100)
+  value       Float
+  labels      String?  @db.VarChar(500)
+  capturedAt  DateTime @default(now())
+
+  @@index([metricName, capturedAt])
+  @@map("metrics_snapshots")
+}
+
+// ============================================================
+// Background Job Records
+// ============================================================
+
+model JobRecord {
+  id             String    @id @default(uuid())
+  queueName      String    @db.VarChar(100)
+  jobName        String    @db.VarChar(100)
+  bullJobId      String?   @db.VarChar(100)
+  status         JobStatus @default(waiting)
+  progress       Int       @default(0)
+  totalRows      Int?
+  processedRows  Int?
+  failedRows     Int?
+  actorId        String?   @db.VarChar(36)
+  idempotencyKey String?   @unique @db.VarChar(36)
+  inputFilename  String?   @db.VarChar(500)
+  result         String?   @db.Text  // JSON: {created,updated,failed,errorReportPath}
+  errorMsg       String?   @db.Text
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(3)
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([queueName, status])
+  @@index([actorId])
+  @@index([createdAt])
+  @@map("job_records")
+}
+
+enum JobStatus {
+  waiting
+  active
+  completed
+  failed
+  delayed
+  stalled
+}
+
+// ============================================================
+// Backup Records
+// ============================================================
+
+model BackupRecord {
+  id           String       @id @default(uuid())
+  fileName     String       @db.VarChar(200)
+  filePath     String       @db.VarChar(500)
+  sizeBytes    BigInt?
+  status       BackupStatus @default(running)
+  verifyStatus BackupVerifyStatus @default(pending)
+  startedAt    DateTime     @default(now())
+  finishedAt   DateTime?
+  errorMsg     String?      @db.Text
+  createdAt    DateTime     @default(now())
+
+  @@index([createdAt])
+  @@map("backup_records")
+}
+
+enum BackupStatus {
+  running
+  completed
+  failed
+}
+
+enum BackupVerifyStatus {
+  pending
+  passed
+  failed
+}
+
+// ============================================================
+// System Settings
+// ============================================================
+
+model SystemSetting {
+  key       String   @id @db.VarChar(100)
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
