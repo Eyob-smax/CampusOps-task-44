@@ -1,0 +1,145 @@
+{
+  "session_id": "develop-4",
+  "type": "develop",
+  "prompt_index": 4,
+  "title": "Parking module, membership tiers, coupons, stored value, logistics master data, fulfillment requests",
+  "started_at": "2026-03-31",
+  "status": "completed",
+
+  "key_decisions": [
+    "Parking session: entry recorded on POST /api/parking/:spaceId/enter; exit on PATCH /api/parking/:spaceId/exit; session duration calculated from createdAt delta",
+    "ParkingAlert: raised when space exceeds max_duration_minutes (configurable per lot); 15-minute SLA before auto-escalation to supervisor queue",
+    "Parking SLA: claimedAt timestamp set on first interaction; SLA clock starts from alert createdAt; escalation fires at 15 min via parking-escalation.worker.ts",
+    "Membership tiers: Bronze/Silver/Gold/Platinum with configurable discount_percent and points_multiplier; tier assignment is manual (admin) + auto-upgrade rule on points threshold",
+    "Coupon: single-use (consumed on fulfillment request approval), percent or fixed discount, min_order_value guard, optional tier_requirement, expiry_date",
+    "Stored value: system-wide feature flag (SystemSetting: stored_value_enabled); topUp/spend/balance endpoints; AES-256-GCM encrypted balance stored in DB; balance can be 0 but never negative",
+    "Fulfillment pricing pipeline: base_price * (1 - tier_discount) → apply coupon → subtract stored_value_spend → final_amount; all amounts in cents integer",
+    "Fulfillment state machine: draft → pending → approved → packed → shipped | rejected (terminal); state changes write to audit log",
+    "Logistics: Warehouse (name, address, capacity), Carrier (name, apiKey, circuitBreaker), DeliveryZone (name, baseRate, perKgRate), ShippingTemplate (carrier+zone combo with markup)",
+    "Jobs module: GET /api/jobs lists registered BullMQ queues with counts and last-run; POST /api/jobs/:name/trigger manually enqueues a job (Admin only)",
+    "frontend views created as full implementations (not stubs): parking operations, supervisor queue, membership tiers, coupons, fulfillment list/create/detail, stored value, logistics (carriers, warehouses, zones, templates)"
+  ],
+
+  "files_created": [
+    "backend/src/modules/parking/parking.service.ts",
+    "backend/src/modules/parking/parking.controller.ts",
+    "backend/src/modules/parking/parking.routes.ts",
+    "backend/src/modules/parking/alert.service.ts",
+    "backend/src/modules/parking/alert.controller.ts",
+    "backend/src/modules/parking/alert.routes.ts",
+    "backend/src/modules/membership/membership.service.ts",
+    "backend/src/modules/membership/membership.controller.ts",
+    "backend/src/modules/membership/membership.routes.ts",
+    "backend/src/modules/membership/coupon.service.ts",
+    "backend/src/modules/membership/coupon.controller.ts",
+    "backend/src/modules/membership/coupon.routes.ts",
+    "backend/src/modules/stored-value/stored-value.service.ts",
+    "backend/src/modules/stored-value/stored-value.controller.ts",
+    "backend/src/modules/stored-value/stored-value.routes.ts",
+    "backend/src/modules/warehouse/warehouse.service.ts",
+    "backend/src/modules/warehouse/warehouse.controller.ts",
+    "backend/src/modules/warehouse/warehouse.routes.ts",
+    "backend/src/modules/carrier/carrier.service.ts",
+    "backend/src/modules/carrier/carrier.controller.ts",
+    "backend/src/modules/carrier/carrier.routes.ts",
+    "backend/src/modules/delivery-zone/delivery-zone.service.ts",
+    "backend/src/modules/delivery-zone/delivery-zone.controller.ts",
+    "backend/src/modules/delivery-zone/delivery-zone.routes.ts",
+    "backend/src/modules/shipping/shipping.service.ts",
+    "backend/src/modules/shipping/shipping.controller.ts",
+    "backend/src/modules/shipping/shipping.routes.ts",
+    "backend/src/modules/fulfillment/fulfillment.service.ts",
+    "backend/src/modules/fulfillment/fulfillment.controller.ts",
+    "backend/src/modules/fulfillment/fulfillment.routes.ts",
+    "backend/src/modules/jobs/job.service.ts",
+    "backend/src/modules/jobs/job.controller.ts",
+    "backend/src/modules/jobs/job.routes.ts",
+    "backend/src/jobs/workers/parking-escalation.worker.ts",
+    "frontend/src/api/parking.ts",
+    "frontend/src/api/membership.ts",
+    "frontend/src/api/logistics.ts",
+    "frontend/src/api/fulfillment.ts",
+    "frontend/src/api/jobs.ts",
+    "frontend/src/composables/useParkingSocket.ts",
+    "frontend/src/views/parking/ParkingOperationsView.vue",
+    "frontend/src/views/parking/SupervisorQueueView.vue",
+    "frontend/src/views/membership/TiersView.vue",
+    "frontend/src/views/membership/CouponsView.vue",
+    "frontend/src/views/fulfillment/FulfillmentListView.vue",
+    "frontend/src/views/fulfillment/FulfillmentCreateView.vue",
+    "frontend/src/views/fulfillment/FulfillmentDetailView.vue",
+    "frontend/src/views/logistics/WarehousesView.vue",
+    "frontend/src/views/logistics/CarriersView.vue",
+    "frontend/src/views/logistics/DeliveryZonesView.vue",
+    "frontend/src/views/logistics/ShippingTemplatesView.vue",
+    "frontend/src/views/admin/JobMonitorView.vue",
+    "backend/unit_tests/parking.test.ts",
+    "backend/unit_tests/coupon.test.ts",
+    "backend/unit_tests/stored-value.test.ts",
+    "backend/unit_tests/shipping.test.ts",
+    "API_tests/routes/parking.test.ts",
+    "API_tests/routes/fulfillment.test.ts",
+    "API_tests/routes/jobs.test.ts"
+  ],
+
+  "files_updated": [
+    "backend/src/routes/index.ts (parkingRoutes, parkingAlertRoutes, warehouseRoutes, carrierRoutes, deliveryZoneRoutes, shippingRoutes, membershipRoutes, couponRoutes, fulfillmentRoutes, storedValueRoutes, jobRoutes registered)",
+    "backend/src/jobs/index.ts (parking-escalation worker imported; parkingEscalationQueue registered)",
+    "backend/src/lib/socket.ts (/parking namespace added alongside /classroom, /supervisor-queue, /alerts)"
+  ],
+
+  "api_endpoints": {
+    "parking": [
+      "GET   /api/parking",
+      "GET   /api/parking/stats",
+      "GET   /api/parking/:id",
+      "POST  /api/parking/:spaceId/enter",
+      "PATCH /api/parking/:spaceId/exit",
+      "GET   /api/parking-alerts",
+      "GET   /api/parking-alerts/:id",
+      "PATCH /api/parking-alerts/:id/claim",
+      "PATCH /api/parking-alerts/:id/close"
+    ],
+    "membership": [
+      "GET   /api/membership/tiers",
+      "POST  /api/membership/tiers",
+      "GET   /api/membership/tiers/:id",
+      "PATCH /api/membership/tiers/:id",
+      "GET   /api/coupons",
+      "POST  /api/coupons",
+      "GET   /api/coupons/:code",
+      "PATCH /api/coupons/:id",
+      "DELETE /api/coupons/:id"
+    ],
+    "stored_value": [
+      "GET  /api/stored-value/:studentId",
+      "POST /api/stored-value/:studentId/topup",
+      "POST /api/stored-value/:studentId/spend"
+    ],
+    "fulfillment": [
+      "GET    /api/fulfillment",
+      "POST   /api/fulfillment",
+      "GET    /api/fulfillment/:id",
+      "PATCH  /api/fulfillment/:id/approve",
+      "PATCH  /api/fulfillment/:id/reject",
+      "PATCH  /api/fulfillment/:id/pack",
+      "PATCH  /api/fulfillment/:id/ship"
+    ],
+    "logistics": [
+      "GET    /api/warehouses",
+      "POST   /api/warehouses",
+      "GET    /api/carriers",
+      "POST   /api/carriers",
+      "GET    /api/delivery-zones",
+      "POST   /api/delivery-zones",
+      "GET    /api/shipping-templates",
+      "POST   /api/shipping-templates"
+    ],
+    "jobs": [
+      "GET  /api/jobs",
+      "POST /api/jobs/:name/trigger"
+    ]
+  },
+
+  "next_prompt": "Prompt 5 — Classroom operations dashboard, anomaly lifecycle, real-time Socket.IO /classroom namespace"
+}

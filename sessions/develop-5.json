@@ -1,0 +1,97 @@
+{
+  "session_id": "develop-5",
+  "type": "develop",
+  "prompt_index": 5,
+  "title": "Classroom operations dashboard, anomaly lifecycle, real-time Socket.IO",
+  "started_at": "2026-03-31",
+  "status": "completed",
+
+  "key_decisions": [
+    "Repo refactor applied: nginx reverse-proxy container removed; frontend nginx now proxies /api/* and /socket.io/* to backend:3000; frontend exposed on :80, backend on :3000",
+    "Unit tests relocated: repo/unit_tests/services/* → repo/backend/unit_tests/* (path fixes applied); repo/unit_tests/ deleted",
+    "vitest.config.ts include updated: '../unit_tests/**/*.test.ts' → 'unit_tests/**/*.test.ts'",
+    "AnomalyTimelineEntry model added to Prisma schema; AnomalyEvent.timeline relation added",
+    "Anomaly state machine: open → acknowledged → assigned → resolved | any-active → escalated",
+    "Resolution note enforced at schema level: z.string().min(10) — cannot be bypassed by API callers",
+    "Heartbeat worker (real): marks classrooms offline if lastHeartbeatAt > 90s stale, creates node_offline anomaly if none exists",
+    "Escalation worker (real): auto-escalates anomalies in open/acknowledged status after 30 min (config.classroom.anomalyEscalationMinutes)",
+    "Both workers replace the stub workers that were in registerWorkerStubs()",
+    "Heartbeat endpoint POST /api/classrooms/heartbeat/:nodeId uses JWT auth (production: would use HMAC with IntegrationKey)",
+    "ClassroomOperationsView: real-time grid with Socket.IO /classroom namespace; card status updates in-place without reload",
+    "AnomalyQueueView: table with inline state-transition buttons; Socket.IO real-time updates; resolve dialog blocks submit until note ≥ 10 chars",
+    "Timeline drawer: click any anomaly row to see full event history (acknowledge, assign, resolve, escalate, auto_escalate entries)",
+    "Escalate pushes to both /classroom namespace (anomaly:updated) and /supervisor-queue namespace (anomaly:escalated)"
+  ],
+
+  "files_created": [
+    "backend/src/modules/classroom/classroom.service.ts (listClassrooms, getClassroomById, getClassroomStats, processHeartbeat, markStaleClassroomsOffline)",
+    "backend/src/modules/classroom/classroom.controller.ts",
+    "backend/src/modules/classroom/classroom.routes.ts",
+    "backend/src/modules/classroom/anomaly.service.ts (listAnomalies, getAnomalyById, createAnomaly, acknowledge, assign, resolve, escalate, escalateStaleAnomalies)",
+    "backend/src/modules/classroom/anomaly.controller.ts",
+    "backend/src/modules/classroom/anomaly.routes.ts",
+    "backend/src/jobs/workers/heartbeat.worker.ts (heartbeatWorker + escalationWorker — replaces stubs)",
+    "frontend/src/api/classroom.ts (Classroom, Anomaly types + classroomApi + anomalyApi)",
+    "frontend/src/composables/useClassroomSocket.ts (Socket.IO /classroom namespace composable)",
+    "frontend/src/views/classroom/ClassroomOperationsView.vue (status grid, live updates, stats bar)",
+    "frontend/src/views/classroom/AnomalyQueueView.vue (table, state buttons, resolve dialog, timeline drawer)",
+    "backend/unit_tests/classroom.test.ts (state machine, schema validation, heartbeat schema)",
+    "API_tests/routes/classroom.test.ts (auth guards + response structure invariants)"
+  ],
+
+  "files_updated": [
+    "backend/prisma/schema.prisma (AnomalyTimelineEntry model + AnomalyEvent.timeline relation)",
+    "backend/src/routes/index.ts (classroomRoutes + anomalyRoutes registered)",
+    "backend/src/jobs/index.ts (heartbeat.worker imported; heartbeat+escalation removed from stubs)",
+    "backend/src/app.ts (cors: origin=true; trust proxy removed — no nginx reverse proxy)",
+    "frontend/nginx.conf (added /api/ and /socket.io/ proxy blocks to backend:3000)",
+    "docker-compose.yml (nginx service removed; frontend ports 80:80; backend ports 3000:3000; certs-data volume removed)",
+    "backend/vitest.config.ts (include path fixed: unit_tests/**/*.test.ts)",
+    "backend/unit_tests/auth.test.ts (moved from repo/unit_tests/services/, import path fixed)",
+    "backend/unit_tests/encryption.test.ts (moved + path fixed)",
+    "backend/unit_tests/masking.test.ts (moved + path fixed)",
+    "backend/unit_tests/master-data.test.ts (moved + path fixed)",
+    "backend/unit_tests/permissions.test.ts (moved + path fixed)",
+    "backend/unit_tests/import-validation.test.ts (moved + path fixed)"
+  ],
+
+  "api_endpoints": {
+    "classrooms": [
+      "GET /api/classrooms",
+      "GET /api/classrooms/stats",
+      "GET /api/classrooms/:id",
+      "POST /api/classrooms/heartbeat/:nodeId"
+    ],
+    "anomalies": [
+      "GET /api/anomalies",
+      "GET /api/anomalies/:id",
+      "POST /api/anomalies",
+      "PATCH /api/anomalies/:id/acknowledge",
+      "PATCH /api/anomalies/:id/assign",
+      "PATCH /api/anomalies/:id/resolve",
+      "PATCH /api/anomalies/:id/escalate"
+    ]
+  },
+
+  "socket_events": {
+    "emitted_by_backend": [
+      "classroom:update — status, confidence, lastHeartbeatAt change",
+      "classroom:recovered — node came back online",
+      "anomaly:created — new anomaly created (manual or by heartbeat worker)",
+      "anomaly:updated — state transition (acknowledge/assign/resolve/escalate)"
+    ],
+    "supervisor_queue": [
+      "anomaly:escalated — pushed when escalate() or auto-escalation fires"
+    ]
+  },
+
+  "anomaly_state_machine": {
+    "open": ["acknowledged (anomaly:acknowledge)", "escalated (anomaly:resolve)"],
+    "acknowledged": ["assigned (anomaly:assign)", "escalated (anomaly:resolve)"],
+    "assigned": ["resolved (anomaly:resolve — note ≥ 10 chars required)", "escalated (anomaly:resolve)"],
+    "resolved": [],
+    "escalated": []
+  },
+
+  "next_prompt": "Prompt 6 — Parking operations dashboard (space counts, turnover stats, exception alerts with 15-min SLA, supervisor escalation queue, real-time Socket.IO /parking namespace)"
+}

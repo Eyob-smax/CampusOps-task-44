@@ -1,0 +1,123 @@
+# ============================================================
+# CampusOps — Test override for API functional tests
+# Usage examples:
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm frontend-test-runner
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm backend-unit-test-runner
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm api-test-runner
+# ============================================================
+
+networks:
+  campusops-net:
+
+volumes:
+  db-data:
+    name: campusops-test-db-data
+  redis-data:
+    name: campusops-test-redis-data
+  storage-data:
+    name: campusops-test-storage-data
+  logs-data:
+    name: campusops-test-logs-data
+  backups-data:
+    name: campusops-test-backups-data
+
+services:
+  db:
+    environment:
+      MYSQL_DATABASE: campusops
+
+  backend:
+    ports: []
+    environment:
+      NODE_ENV: test
+      DB_NAME: campusops
+      SEED_ADMIN_PASSWORD: TestAdminPass1!
+      SEED_OPS_MANAGER_PASSWORD: TestOpsPass1!
+      SEED_SUPERVISOR_PASSWORD: TestSupervisorPass1!
+      SEED_CS_AGENT_PASSWORD: TestCsAgentPass1!
+      SEED_AUDITOR_PASSWORD: TestAuditorPass1!
+
+  # Frontend unit test runner (Vitest)
+  frontend-test-runner:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: builder
+    command: ["npm", "run", "test:unit"]
+    networks:
+      - campusops-net
+
+  # Backend unit test runner (Vitest)
+  backend-unit-test-runner:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    entrypoint: ["npx", "vitest", "run", "--reporter", "verbose", "unit_tests"]
+    environment:
+      NODE_ENV: test
+      DB_NAME: campusops
+      REDIS_URL: redis://redis:6379
+      SEED_ADMIN_PASSWORD: TestAdminPass1!
+      SEED_OPS_MANAGER_PASSWORD: TestOpsPass1!
+      SEED_SUPERVISOR_PASSWORD: TestSupervisorPass1!
+      SEED_CS_AGENT_PASSWORD: TestCsAgentPass1!
+      SEED_AUDITOR_PASSWORD: TestAuditorPass1!
+    volumes:
+      - ./backend/src:/app/src:ro
+      - ./backend/unit_tests:/app/unit_tests:ro
+      - ./backend/vitest.config.ts:/app/vitest.config.ts:ro
+      - ./backend/tsconfig.json:/app/tsconfig.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - campusops-net
+
+  # Test runner — runs Supertest suite then exits
+  api-test-runner:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    entrypoint: ["/docker-entrypoint.sh"]
+    command:
+      [
+        "npx",
+        "jest",
+        "--testPathPattern=API_tests",
+        "--forceExit",
+        "--runInBand",
+        "--verbose",
+      ]
+    environment:
+      NODE_ENV: test
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_NAME: campusops
+      DB_USER: campusops
+      REDIS_URL: redis://redis:6379
+      SEED_ADMIN_PASSWORD: TestAdminPass1!
+      SEED_OPS_MANAGER_PASSWORD: TestOpsPass1!
+      SEED_SUPERVISOR_PASSWORD: TestSupervisorPass1!
+      SEED_CS_AGENT_PASSWORD: TestCsAgentPass1!
+      SEED_AUDITOR_PASSWORD: TestAuditorPass1!
+      STORAGE_PATH: /tmp/test-storage
+      LOG_PATH: /tmp/test-logs
+      BACKUP_PATH: /tmp/test-backups
+    secrets:
+      - encryption_key
+      - db_password
+      - jwt_secret
+    volumes:
+      - ./API_tests:/app/API_tests:ro
+      - ./backend/src:/app/src:ro
+      - ./backend/jest.config.js:/app/jest.config.js:ro
+      - ./backend/tsconfig.json:/app/tsconfig.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - campusops-net

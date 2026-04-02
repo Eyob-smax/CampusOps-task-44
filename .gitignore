@@ -27,3 +27,5 @@ backups/
 storage/
 logs/
 certs/
+/.tmp
+/.venv

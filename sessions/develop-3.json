@@ -1,0 +1,111 @@
+{
+  "session_id": "develop-3",
+  "type": "develop",
+  "prompt_index": 3,
+  "title": "Auth module, RBAC, audit logging, master data CRUD with bulk import/export",
+  "started_at": "2026-03-31",
+  "status": "completed",
+
+  "key_decisions": [
+    "JWT access token TTL: 15 minutes; refresh token TTL: 8 hours; stored in Redis under campusops:refresh:<jti>",
+    "Bcrypt salt rounds: 12 — balances security and startup speed; configurable via config.auth.bcryptRounds",
+    "RBAC: 5 fixed roles (Administrator, Operations Manager, Classroom Supervisor, Customer Service Agent, Auditor); checked in requirePermission() middleware using a permissions matrix in src/lib/permissions.ts",
+    "AuditLog entries encrypted at rest (AES-256-GCM); metadata stored as JSON blob; actor ID always recorded",
+    "Refresh token revocation: Redis key deletion on logout/revoke; jti checked on every refresh call",
+    "Master data import: CSV upload (multer/memory), Zod validation, idempotent upsert per record, per-row error accumulation (does not abort on first failure)",
+    "Export: JSON array download (Accept: application/json) or CSV (Accept: text/csv); no pagination — full table",
+    "IntegrationKey: HMAC-SHA256 signing key for hardware endpoints; created/rotated by Administrators; stored as bcrypt hash in DB",
+    "Settings: key-value store in SystemSetting table; default values seeded; type coercion (boolean/number/string) per known key",
+    "User management: Admin can create/update/deactivate users; no self-deactivation; passwords hashed on creation"
+  ],
+
+  "files_created": [
+    "backend/src/modules/auth/auth.service.ts",
+    "backend/src/modules/auth/auth.controller.ts",
+    "backend/src/modules/auth/auth.routes.ts",
+    "backend/src/modules/auth/auth.validator.ts",
+    "backend/src/modules/admin/audit.service.ts",
+    "backend/src/modules/admin/audit.controller.ts",
+    "backend/src/modules/admin/audit.routes.ts",
+    "backend/src/modules/admin/user.service.ts",
+    "backend/src/modules/admin/user.controller.ts",
+    "backend/src/modules/admin/user.routes.ts",
+    "backend/src/modules/admin/settings.service.ts",
+    "backend/src/modules/admin/settings.controller.ts",
+    "backend/src/modules/admin/settings.routes.ts",
+    "backend/src/modules/admin/integration-key.service.ts",
+    "backend/src/modules/admin/integration-key.controller.ts",
+    "backend/src/modules/master-data/department.service.ts",
+    "backend/src/modules/master-data/department.controller.ts",
+    "backend/src/modules/master-data/department.routes.ts",
+    "backend/src/modules/master-data/semester.service.ts",
+    "backend/src/modules/master-data/semester.controller.ts",
+    "backend/src/modules/master-data/semester.routes.ts",
+    "backend/src/modules/master-data/course.service.ts",
+    "backend/src/modules/master-data/course.controller.ts",
+    "backend/src/modules/master-data/course.routes.ts",
+    "backend/src/modules/master-data/class.service.ts",
+    "backend/src/modules/master-data/class.controller.ts",
+    "backend/src/modules/master-data/class.routes.ts",
+    "backend/src/modules/master-data/student.service.ts",
+    "backend/src/modules/master-data/student.controller.ts",
+    "backend/src/modules/master-data/student.routes.ts",
+    "backend/src/modules/master-data/import.service.ts",
+    "backend/src/lib/permissions.ts",
+    "backend/unit_tests/auth.test.ts",
+    "backend/unit_tests/permissions.test.ts",
+    "backend/unit_tests/master-data.test.ts",
+    "backend/unit_tests/import-validation.test.ts",
+    "API_tests/routes/auth.test.ts",
+    "API_tests/routes/master-data.test.ts"
+  ],
+
+  "files_updated": [
+    "backend/src/routes/index.ts (authRoutes, auditRoutes, userRoutes, settingsRoutes, departmentRoutes, semesterRoutes, courseRoutes, classRoutes, studentRoutes registered)",
+    "backend/src/middleware/auth.middleware.ts (authenticate + requirePermission; requirePermission wraps permissions.ts matrix)"
+  ],
+
+  "api_endpoints": {
+    "auth": [
+      "POST /api/auth/login",
+      "POST /api/auth/refresh",
+      "POST /api/auth/logout",
+      "GET  /api/auth/me"
+    ],
+    "admin_users": [
+      "GET    /api/admin/users",
+      "POST   /api/admin/users",
+      "GET    /api/admin/users/:id",
+      "PATCH  /api/admin/users/:id",
+      "DELETE /api/admin/users/:id"
+    ],
+    "admin_audit": [
+      "GET /api/admin/audit"
+    ],
+    "admin_settings": [
+      "GET   /api/admin/settings",
+      "PATCH /api/admin/settings"
+    ],
+    "master_data": [
+      "GET    /api/departments",
+      "POST   /api/departments",
+      "GET    /api/departments/:id",
+      "PATCH  /api/departments/:id",
+      "DELETE /api/departments/:id",
+      "GET    /api/semesters",
+      "POST   /api/semesters",
+      "GET    /api/courses",
+      "POST   /api/courses",
+      "GET    /api/classes",
+      "POST   /api/classes",
+      "GET    /api/students",
+      "POST   /api/students",
+      "GET    /api/students/:id",
+      "PATCH  /api/students/:id",
+      "POST   /api/students/import",
+      "GET    /api/students/export"
+    ]
+  },
+
+  "next_prompt": "Prompt 4 — Parking module, membership tiers, coupons, stored value, logistics, fulfillment requests"
+}

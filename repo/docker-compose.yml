@@ -1,0 +1,159 @@
+# ============================================================
+# CampusOps Fulfillment & Operations Platform
+# Startup: docker compose up  (from repo/ directory)
+# All services communicate over campusops-net bridge.
+# Ports exposed to host: reverse-proxy :80 (HTTPS redirect), :443 (TLS).
+# Frontend and backend are only reachable through reverse-proxy.
+# ============================================================
+
+networks:
+  campusops-net:
+    driver: bridge
+
+volumes:
+  db-data:
+    name: campusops-task15-db-data
+  redis-data:
+    name: campusops-task15-redis-data
+  storage-data:
+    name: campusops-task15-storage-data
+  logs-data:
+    name: campusops-task15-logs-data
+  backups-data:
+    name: campusops-task15-backups-data
+  tls-certs-data:
+    name: campusops-task15-tls-certs-data
+
+secrets:
+  encryption_key:
+    file: ./secrets/encryption_key.txt
+  db_password:
+    file: ./secrets/db_password.txt
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt
+
+services:
+  # ----------------------------------------------------------
+  # MySQL 8 — primary relational datastore
+  # Internal port: 3306
+  # ----------------------------------------------------------
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db_password
+      MYSQL_DATABASE: campusops
+      MYSQL_USER: campusops
+      MYSQL_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      - db-data:/var/lib/mysql
+      - ./backend/database/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - campusops-net
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysql --protocol=TCP -h127.0.0.1 -ucampusops -p$$(cat /run/secrets/db_password) -e 'SELECT 1' >/dev/null 2>&1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  # ----------------------------------------------------------
+  # Redis 7 — BullMQ queue broker, rate limiting, idempotency
+  # Internal port: 6379
+  # ----------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning --maxmemory 256mb --maxmemory-policy noeviction
+    volumes:
+      - redis-data:/data
+    networks:
+      - campusops-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # Backend — Express + TypeScript + Socket.IO + BullMQ
+  # Internal service only; reverse-proxy handles LAN TLS ingress.
+  # DATABASE_URL assembled from parts by docker-entrypoint.sh
+  # ----------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      SEED_ADMIN_PASSWORD: "Admin#12345"
+      SEED_OPS_MANAGER_PASSWORD: "OpsManager#12345"
+      SEED_SUPERVISOR_PASSWORD: "Supervisor#12345"
+      SEED_CS_AGENT_PASSWORD: "CsAgent#12345"
+      SEED_AUDITOR_PASSWORD: "Auditor#12345"
+    secrets:
+      - encryption_key
+      - db_password
+      - jwt_secret
+    volumes:
+      - storage-data:/data/storage
+      - logs-data:/logs
+      - backups-data:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - campusops-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 45s
+
+  # ----------------------------------------------------------
+  # Frontend — Vue 3 production build served by Node static server
+  # Internal service only; reverse-proxy serves UI and proxies API/WebSocket traffic
+  # ----------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_BACKEND_PORT: "443"
+    restart: unless-stopped
+    networks:
+      - campusops-net
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # ----------------------------------------------------------
+  # Reverse Proxy — TLS termination and LAN ingress
+  # Exposes :80 (redirect) and :443 (HTTPS)
+  # ----------------------------------------------------------
+  reverse-proxy:
+    build:
+      context: ./reverse-proxy
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - tls-certs-data:/etc/nginx/certs
+    networks:
+      - campusops-net
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started

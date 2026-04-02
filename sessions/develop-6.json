@@ -1,0 +1,48 @@
+{
+  "session_id": "develop-6",
+  "type": "develop",
+  "prompt_index": 8,
+  "title": "Shipments, parcels, internal carrier sync, after-sales ticketing, evidence upload, compensation engine",
+  "started_at": "2026-03-31",
+  "status": "completed",
+  "key_decisions": [
+    "simulateCarrierResponse is a pure function — age buckets: pending <1h, in_transit >=1h, out_for_delivery >=6h, delivered >=24h; no network calls",
+    "Evidence upload pipeline: magic-byte validation -> 10MB check -> sharp compress (max 1920px, quality 80) -> aHash -> Hamming <=5 dedup check -> write to /data/storage",
+    "Compensation rule engine: DB-driven CompensationRule rows + hard-coded default ($10 credit for >=48h delay, $50 global cap); approval tiers: limited=$25, full=$50, override=infinity",
+    "Credit compensation auto-topups student stored value via storedValueService.topUp() within same approval flow",
+    "SLA map: delay=72h, dispute=48h, lost_item=96h; at_risk threshold = 4h remaining",
+    "Auto-suggest compensation triggered for delay tickets on creation",
+    "Carrier sync: CarrierConnector.syncParcels iterates active parcels, applies simulateCarrierResponse, calls updateParcelStatus, appends timeline to open after-sales tickets",
+    "shipmentSyncQueue registered in jobs/index.ts; campusops:shipment-sync runs every 5 minutes"
+  ],
+  "files_created": [
+    "backend/src/modules/shipment/shipment.service.ts",
+    "backend/src/modules/shipment/shipment.controller.ts",
+    "backend/src/modules/shipment/shipment.routes.ts",
+    "backend/src/modules/shipment/parcel.service.ts",
+    "backend/src/modules/shipment/parcel.controller.ts",
+    "backend/src/modules/shipment/parcel.routes.ts",
+    "backend/src/modules/shipment/carrier-sync.service.ts",
+    "backend/src/modules/after-sales/after-sales.service.ts",
+    "backend/src/modules/after-sales/evidence.service.ts",
+    "backend/src/modules/after-sales/evidence.controller.ts",
+    "backend/src/modules/after-sales/after-sales.controller.ts",
+    "backend/src/modules/after-sales/compensation.service.ts",
+    "backend/src/modules/after-sales/compensation.controller.ts",
+    "backend/src/modules/after-sales/after-sales.routes.ts",
+    "backend/src/jobs/workers/shipment-sync.worker.ts",
+    "frontend/src/api/shipment.ts",
+    "frontend/src/api/after-sales.ts",
+    "frontend/src/views/shipment/ShipmentsView.vue",
+    "frontend/src/views/shipment/ShipmentDetailView.vue",
+    "frontend/src/views/after-sales/TicketsListView.vue",
+    "frontend/src/views/after-sales/TicketCreateView.vue",
+    "frontend/src/views/after-sales/TicketDetailView.vue",
+    "backend/unit_tests/shipment.test.ts",
+    "API_tests/routes/shipment.test.ts"
+  ],
+  "files_updated": [
+    "backend/src/routes/index.ts (shipmentRoutes, parcelRoutes, afterSalesRoutes added)",
+    "backend/src/jobs/index.ts (shipmentSyncQueue added; shipment-sync worker imported)"
+  ]
+}
