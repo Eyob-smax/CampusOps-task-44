@@ -1,8 +1,18 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import * as childProcess from "child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const execFileSyncMock = vi.fn();
+
+vi.mock("child_process", async () => {
+  const actual =
+    await vi.importActual<typeof import("child_process")>("child_process");
+  return {
+    ...actual,
+    execFileSync: execFileSyncMock,
+  };
+});
 
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = "test-jwt-secret";
@@ -80,7 +90,7 @@ describe("runBackup", () => {
     const missingCmdError = Object.assign(new Error("spawn ENOENT"), {
       code: "ENOENT",
     });
-    vi.spyOn(childProcess, "execFileSync").mockImplementation(() => {
+    execFileSyncMock.mockImplementation(() => {
       throw missingCmdError;
     });
 

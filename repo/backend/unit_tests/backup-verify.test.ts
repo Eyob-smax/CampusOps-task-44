@@ -1,26 +1,27 @@
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import fs from "fs";
+import os from "os";
+import path from "path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-process.env.NODE_ENV = 'test';
-process.env.JWT_SECRET = 'test-jwt-secret';
-process.env.ENCRYPTION_KEY = 'a'.repeat(64);
+process.env.NODE_ENV = "test";
+process.env.JWT_SECRET = "test-jwt-secret";
+process.env.ENCRYPTION_KEY = "a".repeat(64);
 
-const { prisma } = await import('../src/lib/prisma');
-const { verifyBackup } = await import('../src/modules/observability/backup.service');
+const { prisma } = await import("../src/lib/prisma");
+const { verifyBackup } =
+  await import("../src/modules/observability/backup.service");
 
 function makeBackupRecord(id: string, filePath: string) {
   return {
     id,
     fileName: path.basename(filePath),
     filePath,
-    manifestPath: filePath.replace(/\.sql$/, '.json'),
+    manifestPath: filePath.replace(/\.sql$/, ".json"),
     sizeBytes: BigInt(128),
-    status: 'completed',
-    backupMode: 'full_dump',
-    dumpStatus: 'succeeded',
-    verifyStatus: 'pending',
+    status: "completed",
+    backupMode: "full_dump",
+    dumpStatus: "succeeded",
+    verifyStatus: "pending",
     startedAt: new Date(),
     finishedAt: new Date(),
     errorMsg: null,
@@ -32,112 +33,132 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('verifyBackup', () => {
-  it('passes when dump and manifest are valid', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'backup-verify-'));
-    const dumpPath = path.join(dir, 'backup_valid.sql');
-    const manifestPath = dumpPath.replace(/\.sql$/, '.json');
+describe("verifyBackup", () => {
+  it("passes when dump and manifest are valid", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "backup-verify-"));
+    const dumpPath = path.join(dir, "backup_valid.sql");
+    const manifestPath = dumpPath.replace(/\.sql$/, ".json");
 
-    fs.writeFileSync(dumpPath, '-- valid dump');
+    fs.writeFileSync(dumpPath, "-- valid dump");
     fs.writeFileSync(
       manifestPath,
       JSON.stringify({
-        id: 'backup-1',
+        id: "backup-1",
         timestamp: new Date().toISOString(),
-        tables: ['User', 'Role'],
+        tables: ["User", "Role"],
         rowCounts: { User: 10, Role: 3 },
-      })
+        mode: "full_dump",
+        dumpStatus: "succeeded",
+        dumpFile: path.basename(dumpPath),
+        error: null,
+      }),
     );
 
-    const record = makeBackupRecord('backup-1', dumpPath);
+    const record = makeBackupRecord("backup-1", dumpPath);
 
-    vi.spyOn(prisma.backupRecord, 'findUnique').mockResolvedValue(record as any);
+    vi.spyOn(prisma.backupRecord, "findUnique").mockResolvedValue(
+      record as any,
+    );
     const updateSpy = vi
-      .spyOn(prisma.backupRecord, 'update')
-      .mockResolvedValue({ ...record, verifyStatus: 'passed' } as any);
+      .spyOn(prisma.backupRecord, "update")
+      .mockResolvedValue({ ...record, verifyStatus: "passed" } as any);
 
     const result = await verifyBackup(record.id);
 
     expect(result.passed).toBe(true);
-    expect(result.details).toContain('Dump file valid');
+    expect(result.details).toContain("Dump file valid");
     expect(updateSpy).toHaveBeenCalledWith({
       where: { id: record.id },
-      data: { verifyStatus: 'passed' },
+      data: { verifyStatus: "passed" },
     });
 
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('fails when dump file is missing', async () => {
-    const dumpPath = path.join(os.tmpdir(), 'missing-backup.sql');
-    const record = makeBackupRecord('backup-missing', dumpPath);
+  it("fails when dump file is missing", async () => {
+    const dumpPath = path.join(os.tmpdir(), "missing-backup.sql");
+    const record = makeBackupRecord("backup-missing", dumpPath);
 
-    vi.spyOn(prisma.backupRecord, 'findUnique').mockResolvedValue(record as any);
+    vi.spyOn(prisma.backupRecord, "findUnique").mockResolvedValue(
+      record as any,
+    );
     const updateSpy = vi
-      .spyOn(prisma.backupRecord, 'update')
-      .mockResolvedValue({ ...record, verifyStatus: 'failed' } as any);
+      .spyOn(prisma.backupRecord, "update")
+      .mockResolvedValue({ ...record, verifyStatus: "failed" } as any);
 
     const result = await verifyBackup(record.id);
 
     expect(result.passed).toBe(false);
-    expect(result.details).toContain('Dump file not found');
+    expect(result.details).toContain("Dump file not found");
     expect(updateSpy).toHaveBeenCalledWith({
       where: { id: record.id },
-      data: { verifyStatus: 'failed' },
+      data: { verifyStatus: "failed" },
     });
   });
 
-  it('passes legacy backups when dump exists but manifest is missing', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'backup-verify-legacy-'));
-    const dumpPath = path.join(dir, 'backup_legacy.sql');
+  it("passes legacy backups when dump exists but manifest is missing", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "backup-verify-legacy-"));
+    const dumpPath = path.join(dir, "backup_legacy.sql");
 
-    fs.writeFileSync(dumpPath, '-- legacy dump');
+    fs.writeFileSync(dumpPath, "-- legacy dump");
 
-    const record = makeBackupRecord('backup-legacy', dumpPath);
-    vi.spyOn(prisma.backupRecord, 'findUnique').mockResolvedValue(record as any);
-    vi.spyOn(prisma.backupRecord, 'update').mockResolvedValue({ ...record, verifyStatus: 'passed' } as any);
+    const record = makeBackupRecord("backup-legacy", dumpPath);
+    vi.spyOn(prisma.backupRecord, "findUnique").mockResolvedValue(
+      record as any,
+    );
+    vi.spyOn(prisma.backupRecord, "update").mockResolvedValue({
+      ...record,
+      verifyStatus: "passed",
+    } as any);
 
     const result = await verifyBackup(record.id);
 
     expect(result.passed).toBe(true);
-    expect(result.details).toContain('legacy backup format');
+    expect(result.details).toContain("legacy backup format");
 
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('fails when manifest is malformed', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'backup-verify-bad-manifest-'));
-    const dumpPath = path.join(dir, 'backup_bad_manifest.sql');
-    const manifestPath = dumpPath.replace(/\.sql$/, '.json');
+  it("fails when manifest is malformed", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "backup-verify-bad-manifest-"),
+    );
+    const dumpPath = path.join(dir, "backup_bad_manifest.sql");
+    const manifestPath = dumpPath.replace(/\.sql$/, ".json");
 
-    fs.writeFileSync(dumpPath, '-- dump data');
+    fs.writeFileSync(dumpPath, "-- dump data");
     fs.writeFileSync(
       manifestPath,
       JSON.stringify({
-        id: 'backup-bad-manifest',
+        id: "backup-bad-manifest",
         timestamp: new Date().toISOString(),
-      })
+      }),
     );
 
-    const record = makeBackupRecord('backup-bad-manifest', dumpPath);
-    vi.spyOn(prisma.backupRecord, 'findUnique').mockResolvedValue(record as any);
-    vi.spyOn(prisma.backupRecord, 'update').mockResolvedValue({ ...record, verifyStatus: 'failed' } as any);
+    const record = makeBackupRecord("backup-bad-manifest", dumpPath);
+    vi.spyOn(prisma.backupRecord, "findUnique").mockResolvedValue(
+      record as any,
+    );
+    vi.spyOn(prisma.backupRecord, "update").mockResolvedValue({
+      ...record,
+      verifyStatus: "failed",
+    } as any);
 
     const result = await verifyBackup(record.id);
 
     expect(result.passed).toBe(false);
-    expect(result.details).toContain('Manifest missing keys');
+    expect(result.details).toContain("Manifest missing keys");
 
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('throws a 404-shaped error when backup does not exist', async () => {
-    vi.spyOn(prisma.backupRecord, 'findUnique').mockResolvedValue(null as any);
-    const updateSpy = vi.spyOn(prisma.backupRecord, 'update');
+  it("throws a 404-shaped error when backup does not exist", async () => {
+    vi.spyOn(prisma.backupRecord, "findUnique").mockResolvedValue(null as any);
+    const updateSpy = vi.spyOn(prisma.backupRecord, "update");
 
-    await expect(verifyBackup('does-not-exist')).rejects.toMatchObject({
+    await expect(verifyBackup("does-not-exist")).rejects.toMatchObject({
       status: 404,
-      code: 'BACKUP_NOT_FOUND',
+      code: "BACKUP_NOT_FOUND",
     });
 
     expect(updateSpy).not.toHaveBeenCalled();

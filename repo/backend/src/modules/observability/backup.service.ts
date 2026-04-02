@@ -225,6 +225,7 @@ export async function runBackup(actorId?: string) {
       `--port=${db.port}`,
       `--user=${db.user}`,
       "--single-transaction",
+      "--no-tablespaces",
       "--routines",
       "--triggers",
       "--databases",
@@ -234,7 +235,7 @@ export async function runBackup(actorId?: string) {
     let dumpErrorMessage: string | null = null;
 
     try {
-      const dumpCommands = ["mysqldump", "mariadb-dump"];
+      const dumpCommands = ["mariadb-dump", "mysqldump"];
       let dumpOutput: Buffer | null = null;
       let lastDumpError: any = null;
 
@@ -535,7 +536,8 @@ export async function enforceRetention(
     }
     // Delete manifest file (.json companion) if it exists
     const manifestPath =
-      (rec as any).manifestPath && String((rec as any).manifestPath).trim().length > 0
+      (rec as any).manifestPath &&
+      String((rec as any).manifestPath).trim().length > 0
         ? String((rec as any).manifestPath)
         : rec.filePath?.replace(/\.sql$/, ".json");
     if (manifestPath && fs.existsSync(manifestPath)) {

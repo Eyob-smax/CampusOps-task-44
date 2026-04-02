@@ -47,14 +47,15 @@ run_suite() {
 run_suite "Frontend Unit Tests (Vitest)" \
   "$COMPOSE_TEST run --rm --build --no-deps frontend-test-runner"
 
+# Backend/API test dependencies (db + redis)
+run_suite "Prepare Backend/API Test Dependencies (db + redis)" \
+  "$COMPOSE_TEST up -d --build --wait db redis"
+
 # Unit tests (Vitest — runs inside backend container)
 run_suite "Unit Tests (Vitest)" \
   "$COMPOSE_TEST run --rm --build --no-deps backend-unit-test-runner"
 
-# API functional tests (Supertest/Jest — requires db + redis)
-run_suite "Prepare API Test Dependencies (db + redis)" \
-  "$COMPOSE_TEST up -d --build --wait db redis"
-
+# API functional tests (Supertest/Jest)
 run_suite "API Functional Tests (Supertest)" \
   "$COMPOSE_TEST run --rm --build --no-deps api-test-runner"
 
