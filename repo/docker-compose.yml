@@ -24,14 +24,6 @@ volumes:
   tls-certs-data:
     name: campusops-task15-tls-certs-data
 
-secrets:
-  encryption_key:
-    file: ./secrets/encryption_key.txt
-  db_password:
-    file: ./secrets/db_password.txt
-  jwt_secret:
-    file: ./secrets/jwt_secret.txt
-
 services:
   # ----------------------------------------------------------
   # MySQL 8 — primary relational datastore
@@ -41,12 +33,10 @@ services:
     image: mysql:8.0
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db_password
+      MYSQL_ROOT_PASSWORD: campusops_dev
       MYSQL_DATABASE: campusops
       MYSQL_USER: campusops
-      MYSQL_PASSWORD_FILE: /run/secrets/db_password
-    secrets:
-      - db_password
+      MYSQL_PASSWORD: campusops_dev
     volumes:
       - db-data:/var/lib/mysql
       - ./backend/database/init:/docker-entrypoint-initdb.d:ro
@@ -56,7 +46,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "mysql --protocol=TCP -h127.0.0.1 -ucampusops -p$$(cat /run/secrets/db_password) -e 'SELECT 1' >/dev/null 2>&1",
+          "mysql --protocol=TCP -h127.0.0.1 -ucampusops -pcampusops_dev -e 'SELECT 1' >/dev/null 2>&1",
         ]
       interval: 10s
       timeout: 5s
@@ -92,15 +82,23 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_NAME: campusops
+      DB_USER: campusops
+      DB_PASSWORD: campusops_dev
+      JWT_SECRET: campusops_jwt_dev_only_change_me
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      REDIS_URL: redis://redis:6379
+      STORAGE_PATH: /data/storage
+      LOG_PATH: /logs
+      BACKUP_PATH: /backups
+      LOG_LEVEL: info
       SEED_ADMIN_PASSWORD: "Admin#12345"
       SEED_OPS_MANAGER_PASSWORD: "OpsManager#12345"
       SEED_SUPERVISOR_PASSWORD: "Supervisor#12345"
       SEED_CS_AGENT_PASSWORD: "CsAgent#12345"
       SEED_AUDITOR_PASSWORD: "Auditor#12345"
-    secrets:
-      - encryption_key
-      - db_password
-      - jwt_secret
     volumes:
       - storage-data:/data/storage
       - logs-data:/logs

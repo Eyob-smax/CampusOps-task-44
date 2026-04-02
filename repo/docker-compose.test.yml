@@ -31,6 +31,9 @@ services:
     environment:
       NODE_ENV: test
       DB_NAME: campusops
+      DB_PASSWORD: campusops_dev
+      JWT_SECRET: test_jwt_secret
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       SEED_ADMIN_PASSWORD: TestAdminPass1!
       SEED_OPS_MANAGER_PASSWORD: TestOpsPass1!
       SEED_SUPERVISOR_PASSWORD: TestSupervisorPass1!
@@ -96,6 +99,9 @@ services:
       DB_PORT: "3306"
       DB_NAME: campusops
       DB_USER: campusops
+      DB_PASSWORD: campusops_dev
+      JWT_SECRET: test_jwt_secret
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       REDIS_URL: redis://redis:6379
       SEED_ADMIN_PASSWORD: TestAdminPass1!
       SEED_OPS_MANAGER_PASSWORD: TestOpsPass1!
@@ -105,10 +111,6 @@ services:
       STORAGE_PATH: /tmp/test-storage
       LOG_PATH: /tmp/test-logs
       BACKUP_PATH: /tmp/test-backups
-    secrets:
-      - encryption_key
-      - db_password
-      - jwt_secret
     volumes:
       - ./API_tests:/app/API_tests:ro
       - ./backend/src:/app/src:ro
