@@ -32,6 +32,4 @@ certs/
 
 # Session and converted trajectory artifacts
 # Ignore raw session exports and converted trajectory JSONs
-session.jsonl
-session-2.jsonl
 trajectory*.json
