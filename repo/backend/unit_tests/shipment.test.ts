@@ -18,6 +18,15 @@ const { hammingDistance } =
 const { createTicketSchema, updateTicketStatusSchema, computeSlaStatus } =
   await import("../src/modules/after-sales/after-sales.service");
 
+const { AFTER_SALES_SLA_HOURS, canTransitionAfterSalesStatus } =
+  await import("../src/modules/after-sales/after-sales.service");
+
+const {
+  resolveCompensationApprovalLimit,
+  isCompensationAmountApprovable,
+  computeCappedCompensationAmount,
+} = await import("../src/modules/after-sales/compensation.service");
+
 const validUuid = "550e8400-e29b-41d4-a716-446655440000";
 
 // ---- simulateCarrierResponse ----
@@ -152,20 +161,20 @@ describe("hammingDistance — perceptual hash dedup", () => {
     expect(hammingDistance("abc", "ab")).toBe(Infinity);
   });
 
-  it("identifies near-duplicate: distance ≤ 5 should be flagged", () => {
+  it("identifies near-duplicate: distance <= 10 should be flagged", () => {
     // Two hashes with 3 bits different
     const h1 = "0000000000000000"; // all 0 bits
     const h2 = "7000000000000000"; // '7' = 0111, so 3 bits different from '0' = 0000
     const dist = hammingDistance(h1, h2);
     expect(dist).toBe(3);
-    expect(dist).toBeLessThanOrEqual(5); // within dedup threshold
+    expect(dist).toBeLessThanOrEqual(10); // within dedup threshold
   });
 
-  it("identifies non-duplicate: distance > 5", () => {
+  it("identifies non-duplicate: distance > 10", () => {
     const h1 = "0000000000000000";
-    const h2 = "ff00000000000000"; // 'f' = 1111, 'f' = 1111 → 8 bits diff
+    const h2 = "fff0000000000000"; // 12 bits diff
     const dist = hammingDistance(h1, h2);
-    expect(dist).toBeGreaterThan(5);
+    expect(dist).toBeGreaterThan(10);
   });
 });
 
@@ -342,154 +351,108 @@ describe("computeSlaStatus", () => {
 
 describe("Ticket SLA deadline calculation", () => {
   it("delay SLA: 72 hours", () => {
-    const SLA_HOURS: Record<string, number> = {
-      delay: 72,
-      dispute: 48,
-      lost_item: 96,
-    };
     const now = new Date("2024-01-01T12:00:00Z");
-    const deadline = new Date(now.getTime() + SLA_HOURS["delay"]! * 3600_000);
+    const deadline = new Date(
+      now.getTime() + AFTER_SALES_SLA_HOURS["delay"]! * 3600_000,
+    );
     expect(deadline.toISOString()).toBe("2024-01-04T12:00:00.000Z");
   });
 
   it("dispute SLA: 48 hours", () => {
-    const SLA_HOURS: Record<string, number> = {
-      delay: 72,
-      dispute: 48,
-      lost_item: 96,
-    };
     const now = new Date("2024-01-01T12:00:00Z");
-    const deadline = new Date(now.getTime() + SLA_HOURS["dispute"]! * 3600_000);
+    const deadline = new Date(
+      now.getTime() + AFTER_SALES_SLA_HOURS["dispute"]! * 3600_000,
+    );
     expect(deadline.toISOString()).toBe("2024-01-03T12:00:00.000Z");
   });
 
   it("lost_item SLA: 96 hours", () => {
-    const SLA_HOURS: Record<string, number> = {
-      delay: 72,
-      dispute: 48,
-      lost_item: 96,
-    };
     const now = new Date("2024-01-01T12:00:00Z");
     const deadline = new Date(
-      now.getTime() + SLA_HOURS["lost_item"]! * 3600_000,
+      now.getTime() + AFTER_SALES_SLA_HOURS["lost_item"]! * 3600_000,
     );
     expect(deadline.toISOString()).toBe("2024-01-05T12:00:00.000Z");
   });
 });
 
-// ---- Ticket status transitions (pure logic) ----
+// ---- Ticket status transitions ----
 
 describe("ticket status state machine", () => {
-  const VALID_TRANSITIONS: Record<string, string[]> = {
-    open: ["under_review", "closed"],
-    under_review: ["pending_approval", "closed"],
-    pending_approval: ["resolved", "closed"],
-    resolved: ["closed"],
-    closed: [],
-  };
-
-  function canTransition(from: string, to: string) {
-    return VALID_TRANSITIONS[from]?.includes(to) ?? false;
-  }
-
   it("open → under_review: valid", () =>
-    expect(canTransition("open", "under_review")).toBe(true));
+    expect(canTransitionAfterSalesStatus("open", "under_review")).toBe(true));
   it("open → closed: valid", () =>
-    expect(canTransition("open", "closed")).toBe(true));
+    expect(canTransitionAfterSalesStatus("open", "closed")).toBe(true));
   it("open → pending_approval: invalid", () =>
-    expect(canTransition("open", "pending_approval")).toBe(false));
+    expect(canTransitionAfterSalesStatus("open", "pending_approval")).toBe(false));
   it("open → resolved: invalid", () =>
-    expect(canTransition("open", "resolved")).toBe(false));
+    expect(canTransitionAfterSalesStatus("open", "resolved")).toBe(false));
   it("under_review → pending_approval: valid", () =>
-    expect(canTransition("under_review", "pending_approval")).toBe(true));
+    expect(canTransitionAfterSalesStatus("under_review", "pending_approval")).toBe(true));
   it("under_review → open: invalid", () =>
-    expect(canTransition("under_review", "open")).toBe(false));
+    expect(canTransitionAfterSalesStatus("under_review", "open")).toBe(false));
   it("pending_approval → resolved: valid", () =>
-    expect(canTransition("pending_approval", "resolved")).toBe(true));
+    expect(canTransitionAfterSalesStatus("pending_approval", "resolved")).toBe(true));
   it("pending_approval → closed: valid", () =>
-    expect(canTransition("pending_approval", "closed")).toBe(true));
+    expect(canTransitionAfterSalesStatus("pending_approval", "closed")).toBe(true));
   it("resolved → closed: valid", () =>
-    expect(canTransition("resolved", "closed")).toBe(true));
+    expect(canTransitionAfterSalesStatus("resolved", "closed")).toBe(true));
   it("resolved → open: invalid", () =>
-    expect(canTransition("resolved", "open")).toBe(false));
+    expect(canTransitionAfterSalesStatus("resolved", "open")).toBe(false));
   it("closed → anything: invalid", () => {
-    expect(canTransition("closed", "open")).toBe(false);
-    expect(canTransition("closed", "resolved")).toBe(false);
-    expect(canTransition("closed", "closed")).toBe(false);
+    expect(canTransitionAfterSalesStatus("closed", "open")).toBe(false);
+    expect(canTransitionAfterSalesStatus("closed", "resolved")).toBe(false);
+    expect(canTransitionAfterSalesStatus("closed", "closed")).toBe(false);
   });
 });
 
 // ---- Compensation approval tier logic ----
 
 describe("compensation approval tiers", () => {
-  const LIMITS: Record<string, number> = {
-    limited: 25,
-    full: 50,
-    override: Infinity,
-  };
-
-  function canApprove(permissionLevel: string, amount: number): boolean {
-    const limit = LIMITS[permissionLevel] ?? 0;
-    return amount <= limit;
-  }
-
   it("limited tier: can approve $25", () =>
-    expect(canApprove("limited", 25)).toBe(true));
+    expect(isCompensationAmountApprovable("limited", 25)).toBe(true));
   it("limited tier: cannot approve $25.01", () =>
-    expect(canApprove("limited", 25.01)).toBe(false));
+    expect(isCompensationAmountApprovable("limited", 25.01)).toBe(false));
   it("limited tier: cannot approve $50", () =>
-    expect(canApprove("limited", 50)).toBe(false));
+    expect(isCompensationAmountApprovable("limited", 50)).toBe(false));
   it("full tier: can approve $50", () =>
-    expect(canApprove("full", 50)).toBe(true));
+    expect(isCompensationAmountApprovable("full", 50)).toBe(true));
   it("full tier: can approve $25", () =>
-    expect(canApprove("full", 25)).toBe(true));
+    expect(isCompensationAmountApprovable("full", 25)).toBe(true));
   it("full tier: cannot approve $50.01", () =>
-    expect(canApprove("full", 50.01)).toBe(false));
+    expect(isCompensationAmountApprovable("full", 50.01)).toBe(false));
   it("override tier: can approve any amount", () => {
-    expect(canApprove("override", 50)).toBe(true);
-    expect(canApprove("override", 999)).toBe(true);
-    expect(canApprove("override", 0.01)).toBe(true);
+    expect(isCompensationAmountApprovable("override", 50)).toBe(true);
+    expect(isCompensationAmountApprovable("override", 999)).toBe(true);
+    expect(isCompensationAmountApprovable("override", 0.01)).toBe(true);
   });
   it("unknown tier: cannot approve any amount", () =>
-    expect(canApprove("unknown", 1)).toBe(false));
+    expect(resolveCompensationApprovalLimit("unknown" as any)).toBe(0));
 });
 
 // ---- Global compensation cap logic ----
 
 describe("compensation cap: $50 global cap", () => {
-  const GLOBAL_CAP = 50;
-
-  function computeFinalAmount(
-    suggested: number,
-    existingApproved: number,
-    capAmount: number,
-  ): number {
-    const effectiveCap = Math.min(capAmount, GLOBAL_CAP);
-    const remaining = Math.max(0, effectiveCap - existingApproved);
-    return Math.min(suggested, remaining);
-  }
-
   it("full suggestion when no existing compensations", () => {
-    expect(computeFinalAmount(10, 0, 50)).toBe(10);
+    expect(computeCappedCompensationAmount(10, 0, 50)).toBe(10);
   });
 
   it("caps at remaining allowance", () => {
-    expect(computeFinalAmount(10, 45, 50)).toBe(5);
+    expect(computeCappedCompensationAmount(10, 45, 50)).toBe(5);
   });
 
   it("returns 0 when cap already reached", () => {
-    expect(computeFinalAmount(10, 50, 50)).toBe(0);
+    expect(computeCappedCompensationAmount(10, 50, 50)).toBe(0);
   });
 
   it("rule-specific cap overrides if lower than global cap", () => {
     // Rule cap = $20, no existing → finalAmount = $10 (under rule cap)
-    expect(computeFinalAmount(10, 0, 20)).toBe(10);
+    expect(computeCappedCompensationAmount(10, 0, 20)).toBe(10);
     // Rule cap = $20, existing = $15 → only $5 remaining
-    expect(computeFinalAmount(10, 15, 20)).toBe(5);
+    expect(computeCappedCompensationAmount(10, 15, 20)).toBe(5);
   });
 
   it("global cap prevents rule cap above $50", () => {
     // Rule cap = $100 → effective cap = $50
-    expect(computeFinalAmount(80, 0, 100)).toBe(50);
+    expect(computeCappedCompensationAmount(80, 0, 100)).toBe(50);
   });
 });

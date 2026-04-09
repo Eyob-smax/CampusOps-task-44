@@ -1,9 +1,9 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { writeAuditEntry } from "../admin/audit.service";
-import { decrypt, encrypt } from "../../lib/encryption";
+import { decrypt } from "../../lib/encryption";
 import { maskStudent } from "../../lib/masking";
-import type { UserRole, PaginatedResult } from "../../types";
+import type { UserRole, PaginatedResult, AuthenticatedUser } from "../../types";
 import { z } from "zod";
 
 export const createStudentSchema = z.object({
@@ -100,6 +100,37 @@ interface RawStudent {
   updatedAt: Date;
 }
 
+function createStudentNotFoundError(): Error {
+  const err: any = new Error("Student not found");
+  err.status = 404;
+  err.code = "NOT_FOUND";
+  return err;
+}
+
+export function scopedStudentWhere(
+  id: string,
+  requester?: AuthenticatedUser,
+): Record<string, unknown> {
+  const where: Record<string, unknown> = { id };
+  if (requester?.campusId) {
+    where["campusId"] = requester.campusId;
+  }
+  return where;
+}
+
+async function assertScopedStudentExists(
+  id: string,
+  requester?: AuthenticatedUser,
+): Promise<void> {
+  const existing = await prisma.student.findFirst({
+    where: scopedStudentWhere(id, requester),
+    select: { id: true },
+  });
+  if (!existing) {
+    throw createStudentNotFoundError();
+  }
+}
+
 export async function listStudents(
   params: {
     search?: string;
@@ -109,12 +140,14 @@ export async function listStudents(
     limit?: number;
   },
   callerRole: UserRole,
+  requester?: AuthenticatedUser,
 ): Promise<PaginatedResult<ReturnType<typeof serializeStudent>>> {
   const page = Math.max(1, params.page ?? 1);
   const limit = Math.min(100, Math.max(1, params.limit ?? 25));
   const skip = (page - 1) * limit;
 
   const where: Record<string, unknown> = {};
+  if (requester?.campusId) where["campusId"] = requester.campusId;
   if (params.isActive !== undefined) where["isActive"] = params.isActive;
   if (params.departmentId) where["departmentId"] = params.departmentId;
   if (params.search) {
@@ -145,9 +178,13 @@ export async function listStudents(
   };
 }
 
-export async function getStudentById(id: string, callerRole: UserRole) {
-  const raw = await prisma.student.findUnique({
-    where: { id },
+export async function getStudentById(
+  id: string,
+  callerRole: UserRole,
+  requester?: AuthenticatedUser,
+) {
+  const raw = await prisma.student.findFirst({
+    where: scopedStudentWhere(id, requester),
     select: STUDENT_SELECT,
   });
   if (!raw) return null;
@@ -158,16 +195,22 @@ export async function createStudent(
   dto: CreateStudentDto,
   actorId: string,
   callerRole: UserRole,
+  requester?: AuthenticatedUser,
 ) {
   const payload = createStudentSchema.parse(dto);
-  const data: Prisma.StudentUncheckedCreateInput = {
+  const data: Prisma.StudentCreateInput = {
+    campusId: requester?.campusId ?? "main-campus",
     studentNumber: payload.studentNumber,
     fullName: payload.fullName,
     email: payload.email,
     phone: payload.phone,
-    departmentId: payload.departmentId,
-    membershipTierId: payload.membershipTierId,
     isActive: payload.isActive ?? true,
+    department: payload.departmentId
+      ? { connect: { id: payload.departmentId } }
+      : undefined,
+    membershipTier: payload.membershipTierId
+      ? { connect: { id: payload.membershipTierId } }
+      : undefined,
   };
 
   const student = await prisma.student.create({
@@ -185,14 +228,25 @@ export async function updateStudent(
   dto: UpdateStudentDto,
   actorId: string,
   callerRole: UserRole,
+  requester?: AuthenticatedUser,
 ) {
+  await assertScopedStudentExists(id, requester);
+
   const payload = updateStudentSchema.parse(dto);
-  const data: Prisma.StudentUncheckedUpdateInput = {};
+  const data: Prisma.StudentUpdateInput = {};
   if (payload.fullName !== undefined) data.fullName = payload.fullName;
   if (payload.email !== undefined) data.email = payload.email;
   if (payload.phone !== undefined) data.phone = payload.phone;
-  if (payload.departmentId !== undefined) data.departmentId = payload.departmentId;
-  if (payload.membershipTierId !== undefined) data.membershipTierId = payload.membershipTierId;
+  if (payload.departmentId !== undefined) {
+    data.department = payload.departmentId
+      ? { connect: { id: payload.departmentId } }
+      : { disconnect: true };
+  }
+  if (payload.membershipTierId !== undefined) {
+    data.membershipTier = payload.membershipTierId
+      ? { connect: { id: payload.membershipTierId } }
+      : { disconnect: true };
+  }
   if (payload.isActive !== undefined) data.isActive = payload.isActive;
 
   const student = await prisma.student.update({
@@ -206,13 +260,22 @@ export async function updateStudent(
   return serializeStudent(student as RawStudent, callerRole);
 }
 
-export async function deactivateStudent(id: string, actorId: string) {
+export async function deactivateStudent(
+  id: string,
+  actorId: string,
+  requester?: AuthenticatedUser,
+) {
+  await assertScopedStudentExists(id, requester);
   await prisma.student.update({ where: { id }, data: { isActive: false } });
   await writeAuditEntry(actorId, "student:deactivated", "student", id, {});
 }
 
-export async function exportStudentsCsv(callerRole: UserRole): Promise<string> {
+export async function exportStudentsCsv(
+  callerRole: UserRole,
+  requester?: AuthenticatedUser,
+): Promise<string> {
   const rows = await prisma.student.findMany({
+    where: requester?.campusId ? { campusId: requester.campusId } : undefined,
     select: STUDENT_SELECT,
     orderBy: { studentNumber: "asc" },
   });
@@ -250,23 +313,47 @@ export async function upsertStudentRaw(data: {
   phone?: string;
   departmentId?: string;
   membershipTierId?: string;
-}) {
+}, requester?: AuthenticatedUser) {
+  const existing = await prisma.student.findUnique({
+    where: { studentNumber: data.studentNumber },
+    select: { id: true, campusId: true },
+  });
+
+  if (existing && requester?.campusId && existing.campusId !== requester.campusId) {
+    throw createStudentNotFoundError();
+  }
+
   return prisma.student.upsert({
     where: { studentNumber: data.studentNumber },
     create: {
+      campusId: requester?.campusId ?? "main-campus",
       studentNumber: data.studentNumber,
       fullName: data.fullName,
       email: data.email,
       phone: data.phone,
-      departmentId: data.departmentId,
-      membershipTierId: data.membershipTierId,
+      department: data.departmentId
+        ? { connect: { id: data.departmentId } }
+        : undefined,
+      membershipTier: data.membershipTierId
+        ? { connect: { id: data.membershipTierId } }
+        : undefined,
     },
     update: {
       fullName: data.fullName,
       email: data.email,
       phone: data.phone,
-      departmentId: data.departmentId,
-      membershipTierId: data.membershipTierId,
+      department:
+        data.departmentId === undefined
+          ? undefined
+          : data.departmentId
+            ? { connect: { id: data.departmentId } }
+            : { disconnect: true },
+      membershipTier:
+        data.membershipTierId === undefined
+          ? undefined
+          : data.membershipTierId
+            ? { connect: { id: data.membershipTierId } }
+            : { disconnect: true },
     },
     select: { id: true, studentNumber: true },
   });

@@ -4,6 +4,46 @@
  */
 import request from 'supertest';
 import { app, authGet, authPost, authPut, authPatch, loginAs, uuid } from '../helpers/setup';
+import { prisma } from '../../src/lib/prisma';
+import { encryptAmount } from '../../src/lib/encryption';
+
+async function createStudentWithBalance(balance: number) {
+  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  return prisma.student.create({
+    data: {
+      studentNumber: `SV-${suffix}`,
+      fullName: `Stored Value Student ${suffix}`,
+      email: `stored-value-${suffix}@example.edu`,
+      storedValueEncrypted: encryptAmount(balance),
+    },
+    select: { id: true },
+  });
+}
+
+async function getUserId(username: string) {
+  const user = await prisma.user.findUnique({
+    where: { username },
+    select: { id: true },
+  });
+  if (!user) throw new Error(`Missing seed user: ${username}`);
+  return user.id;
+}
+
+async function setStoredValueEnabled(enabled: boolean) {
+  await prisma.systemSetting.upsert({
+    where: { key: 'stored_value_enabled' },
+    update: { value: enabled ? 'true' : 'false' },
+    create: { key: 'stored_value_enabled', value: enabled ? 'true' : 'false' },
+  });
+}
+
+async function setStoredValueTopUpThreshold(amount: number) {
+  await prisma.systemSetting.upsert({
+    where: { key: 'stored_value_topup_approval_threshold' },
+    update: { value: amount.toFixed(2) },
+    create: { key: 'stored_value_topup_approval_threshold', value: amount.toFixed(2) },
+  });
+}
 
 // ---- Warehouse ----
 
@@ -217,6 +257,61 @@ describe('GET /api/fulfillment', () => {
     const res = await authGet('/api/fulfillment', 'auditor');
     expect(res.status).toBe(200);
   });
+
+  it('masks student PII for auditor on fulfillment detail', async () => {
+    const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    const student = await prisma.student.create({
+      data: {
+        studentNumber: `FUL-${suffix}`,
+        fullName: 'Bob Example',
+        email: `bob-${suffix}@example.edu`,
+        phone: '5551234567',
+        storedValueEncrypted: encryptAmount(42),
+      },
+      select: { id: true },
+    });
+
+    const adminId = await getUserId('admin');
+    const fulfillment = await prisma.fulfillmentRequest.create({
+      data: {
+        studentId: student.id,
+        createdById: adminId,
+        status: 'pending',
+        subtotal: 100,
+        discountAmount: 0,
+        shippingFee: 0,
+        totalAmount: 100,
+        storedValueUsed: 0,
+        pointsEarned: 0,
+        receiptNumber: `RCP-MASK-${suffix}`,
+        items: {
+          create: [
+            {
+              description: 'Mask test item',
+              quantity: 1,
+              unitPrice: 100,
+            },
+          ],
+        },
+      },
+      select: { id: true },
+    });
+
+    try {
+      const res = await authGet(`/api/fulfillment/${fulfillment.id}`, 'auditor');
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.student.fullName).toBe('Bob E.');
+      expect(res.body.data.student.email).toBe('***@example.edu');
+      expect(res.body.data.student.studentId).toMatch(/\*+.{4}$/);
+      expect(res.body.data.student.studentId).not.toBe(`FUL-${suffix}`);
+      expect(res.body.data.student.storedValueEncrypted).toBeUndefined();
+    } finally {
+      await prisma.fulfillmentItem.deleteMany({ where: { fulfillmentRequestId: fulfillment.id } });
+      await prisma.fulfillmentRequest.deleteMany({ where: { id: fulfillment.id } });
+      await prisma.student.deleteMany({ where: { id: student.id } });
+    }
+  });
 });
 
 describe('POST /api/fulfillment', () => {
@@ -255,6 +350,11 @@ describe('GET /api/stored-value/:studentId/balance', () => {
     const res = await authGet('/api/stored-value/some-student-id/balance', 'auditor');
     expect(res.status).toBe(403);
   });
+
+  it('returns 403 for cs_agent (no stored-value:read)', async () => {
+    const res = await authGet('/api/stored-value/some-student-id/balance', 'agent');
+    expect(res.status).toBe(403);
+  });
 });
 
 describe('POST /api/stored-value/:studentId/top-up', () => {
@@ -274,6 +374,65 @@ describe('POST /api/stored-value/:studentId/top-up', () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('MISSING_IDEMPOTENCY_KEY');
   });
+
+  it('returns 403 FEATURE_DISABLED when stored value is disabled', async () => {
+    await setStoredValueEnabled(false);
+
+    const token = await loginAs('admin');
+    const res = await request(app)
+      .post('/api/stored-value/some-student-id/top-up')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Idempotency-Key', uuid())
+      .send({ amount: 50 });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FEATURE_DISABLED');
+
+    await setStoredValueEnabled(true);
+  });
+
+  it('allows high-value top-up for operations manager when feature is enabled', async () => {
+    await setStoredValueEnabled(true);
+    await setStoredValueTopUpThreshold(200);
+
+    const student = await createStudentWithBalance(100);
+    const token = await loginAs('ops');
+    const res = await request(app)
+      .post(`/api/stored-value/${student.id}/top-up`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Idempotency-Key', uuid())
+      .send({ amount: 250, note: 'Approved by operations manager' });
+
+    expect([200, 201]).toContain(res.status);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.balance).toBe(350);
+  });
+
+  it('escapes HTML-like note content in receipt output', async () => {
+    await setStoredValueEnabled(true);
+
+    const student = await createStudentWithBalance(0);
+    const token = await loginAs('admin');
+
+    const topUpRes = await request(app)
+      .post(`/api/stored-value/${student.id}/top-up`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Idempotency-Key', uuid())
+      .send({ amount: 10, note: '<script>alert("x")</script>' });
+
+    expect([200, 201]).toContain(topUpRes.status);
+    const transactionId = topUpRes.body.data?.transaction?.id;
+    expect(typeof transactionId).toBe('string');
+
+    const receiptRes = await request(app)
+      .get(`/api/stored-value/transactions/${transactionId}/receipt`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(receiptRes.status).toBe(200);
+    expect(receiptRes.text).toContain('Note:');
+    expect(receiptRes.text).toContain('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;');
+    expect(receiptRes.text).not.toContain('<script>');
+  });
 });
 
 describe('POST /api/stored-value/:studentId/spend', () => {
@@ -285,6 +444,69 @@ describe('POST /api/stored-value/:studentId/spend', () => {
       .send({ amount: 10, description: 'test' });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('MISSING_IDEMPOTENCY_KEY');
+  });
+
+  it('returns 403 for cs_agent when reference ticket is outside actor ownership scope', async () => {
+    await setStoredValueEnabled(true);
+    const student = await createStudentWithBalance(100);
+    const adminId = await getUserId('admin');
+    const ticket = await prisma.afterSalesTicket.create({
+      data: {
+        studentId: student.id,
+        createdById: adminId,
+        type: 'delay',
+        status: 'open',
+        description: 'Admin-owned ticket',
+        slaDeadlineAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+      },
+      select: { id: true },
+    });
+
+    const token = await loginAs('agent');
+    const res = await request(app)
+      .post(`/api/stored-value/${student.id}/spend`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Idempotency-Key', uuid())
+      .send({
+        amount: 10,
+        referenceId: ticket.id,
+        referenceType: 'after_sales_ticket',
+      });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('OBJECT_SCOPE_VIOLATION');
+  });
+
+  it('returns 200 for cs_agent when spending against own ticket scope', async () => {
+    await setStoredValueEnabled(true);
+    const student = await createStudentWithBalance(100);
+    const agentId = await getUserId('cs_agent');
+    const ticket = await prisma.afterSalesTicket.create({
+      data: {
+        studentId: student.id,
+        createdById: agentId,
+        type: 'delay',
+        status: 'open',
+        description: 'Agent-owned ticket',
+        slaDeadlineAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+      },
+      select: { id: true },
+    });
+
+    const token = await loginAs('agent');
+    const res = await request(app)
+      .post(`/api/stored-value/${student.id}/spend`)
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Idempotency-Key', uuid())
+      .send({
+        amount: 10,
+        referenceId: ticket.id,
+        referenceType: 'after_sales_ticket',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.balance).toBe(90);
   });
 });
 

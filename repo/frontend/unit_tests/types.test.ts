@@ -91,11 +91,11 @@ describe('Types — compile-time & runtime sanity', () => {
   // FulfillmentStatus
   // -----------------------------------------------------------------------
   describe('FulfillmentStatus', () => {
-    it('has 6 lifecycle statuses', () => {
+      it('has 5 lifecycle statuses', () => {
       const statuses: FulfillmentStatus[] = [
-        'draft', 'pending', 'processing', 'shipped', 'delivered', 'cancelled',
+          'pending', 'processing', 'shipped', 'delivered', 'cancelled',
       ];
-      expect(statuses).toHaveLength(6);
+        expect(statuses).toHaveLength(5);
     });
   });
 

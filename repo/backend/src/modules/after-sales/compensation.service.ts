@@ -2,6 +2,9 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { writeAuditEntry } from '../admin/audit.service';
 import { logger } from '../../lib/logger';
+import type { AuthenticatedUser } from '../../types';
+
+export type CompensationApprovalLevel = 'limited' | 'full' | 'override';
 
 // ---- Zod schemas ----
 
@@ -28,17 +31,55 @@ export const createCompensationRuleSchema = z.object({
 
 // ---- Constants ----
 
-const GLOBAL_CAP = 50; // $50
+export const GLOBAL_COMPENSATION_CAP = 50; // $50
+
+export const COMPENSATION_APPROVAL_LIMITS: Record<CompensationApprovalLevel, number> = {
+  limited: 25,
+  full: 50,
+  override: Infinity,
+};
+
+export function resolveCompensationApprovalLimit(permissionLevel: CompensationApprovalLevel): number {
+  return COMPENSATION_APPROVAL_LIMITS[permissionLevel] ?? 0;
+}
+
+export function isCompensationAmountApprovable(
+  permissionLevel: CompensationApprovalLevel,
+  amount: number,
+): boolean {
+  return amount <= resolveCompensationApprovalLimit(permissionLevel);
+}
+
+export function computeCappedCompensationAmount(
+  suggestedAmount: number,
+  existingApprovedTotal: number,
+  capAmount: number,
+): number {
+  const effectiveCap = Math.min(capAmount, GLOBAL_COMPENSATION_CAP);
+  const remaining = Math.max(0, effectiveCap - existingApprovedTotal);
+  return Math.min(suggestedAmount, remaining);
+}
 
 // Default rule applied when no DB rules match
 const DEFAULT_RULE = {
   minDelayHours:    48,
   suggestedAmount:  10,
-  capAmount:        GLOBAL_CAP,
+  capAmount:        GLOBAL_COMPENSATION_CAP,
   compensationType: 'credit' as const,
 };
 
 // ---- Service functions ----
+
+function scopedTicketWhere(ticketId: string, requester?: AuthenticatedUser) {
+  const where: Record<string, unknown> = { id: ticketId };
+  if (requester?.campusId) {
+    where.campusId = requester.campusId;
+  }
+  if (requester?.role === 'customer_service_agent') {
+    where.createdById = requester.id;
+  }
+  return where;
+}
 
 export async function getActiveRules() {
   return prisma.compensationRule.findMany({
@@ -47,8 +88,8 @@ export async function getActiveRules() {
   });
 }
 
-export async function getTicketCompensations(ticketId: string) {
-  const ticket = await prisma.afterSalesTicket.findUnique({ where: { id: ticketId } });
+export async function getTicketCompensations(ticketId: string, requester?: AuthenticatedUser) {
+  const ticket = await prisma.afterSalesTicket.findFirst({ where: scopedTicketWhere(ticketId, requester) });
   if (!ticket) {
     const err: any = new Error('After-sales ticket not found');
     err.status = 404;
@@ -62,9 +103,9 @@ export async function getTicketCompensations(ticketId: string) {
   });
 }
 
-export async function suggestCompensation(ticketId: string, actorId: string) {
-  const ticket = await prisma.afterSalesTicket.findUnique({
-    where:   { id: ticketId },
+export async function suggestCompensation(ticketId: string, actorId: string, requester?: AuthenticatedUser) {
+  const ticket = await prisma.afterSalesTicket.findFirst({
+    where: scopedTicketWhere(ticketId, requester),
     include: { shipment: true, compensations: true },
   });
 
@@ -88,7 +129,7 @@ export async function suggestCompensation(ticketId: string, actorId: string) {
     .filter(c => c.status === 'approved' || c.status === 'applied')
     .reduce((sum, c) => sum + Number(c.amount), 0);
 
-  if (existingTotal >= GLOBAL_CAP) {
+  if (existingTotal >= GLOBAL_COMPENSATION_CAP) {
     logger.info({ msg: 'Compensation cap reached, skipping suggestion', ticketId });
     return null;
   }
@@ -99,7 +140,7 @@ export async function suggestCompensation(ticketId: string, actorId: string) {
   // Match applicable rules
   let suggestedAmount   = 0;
   let compensationType  = 'credit' as string;
-  let capAmount         = GLOBAL_CAP;
+  let capAmount         = GLOBAL_COMPENSATION_CAP;
   let ruleMatched       = false;
 
   for (const rule of rules) {
@@ -109,7 +150,7 @@ export async function suggestCompensation(ticketId: string, actorId: string) {
     // Rule matches — use it
     suggestedAmount  = Number(rule.suggestedAmount);
     compensationType = rule.compensationType;
-    capAmount        = Math.min(Number(rule.capAmount), GLOBAL_CAP);
+    capAmount        = Math.min(Number(rule.capAmount), GLOBAL_COMPENSATION_CAP);
     ruleMatched      = true;
     break;
   }
@@ -128,8 +169,7 @@ export async function suggestCompensation(ticketId: string, actorId: string) {
   }
 
   // Cap: min(suggestedAmount, cap - existingTotal)
-  const remaining  = Math.max(0, capAmount - existingTotal);
-  const finalAmount = Math.min(suggestedAmount, remaining);
+  const finalAmount = computeCappedCompensationAmount(suggestedAmount, existingTotal, capAmount);
 
   if (finalAmount <= 0) {
     logger.info({ msg: 'Compensation capped at zero, skipping', ticketId });
@@ -161,18 +201,34 @@ export async function suggestCompensation(ticketId: string, actorId: string) {
 }
 
 export async function approveCompensation(
+  ticketId:         string,
   compensationId:   string,
   actorId:          string,
-  permissionLevel:  'limited' | 'full' | 'override',
+  permissionLevel:  CompensationApprovalLevel,
+  requester?:       AuthenticatedUser,
   note?:            string,
 ) {
-  const compensation = await prisma.compensation.findUnique({
-    where:   { id: compensationId },
+  const where: Record<string, unknown> = {
+    id: compensationId,
+    ticketId,
+  };
+  if (requester?.campusId) {
+    where.ticket = { campusId: requester.campusId };
+  }
+  if (requester?.role === 'customer_service_agent') {
+    where.ticket = {
+      createdById: requester.id,
+      campusId: requester.campusId,
+    };
+  }
+
+  const compensation = await prisma.compensation.findFirst({
+    where,
     include: { ticket: true },
   });
 
   if (!compensation) {
-    const err: any = new Error('Compensation not found');
+    const err: any = new Error('Compensation not found for this ticket');
     err.status = 404;
     err.code   = 'COMPENSATION_NOT_FOUND';
     throw err;
@@ -188,14 +244,8 @@ export async function approveCompensation(
   const amount = Number(compensation.amount);
 
   // Permission level checks
-  const LIMITS: Record<string, number> = {
-    limited:  25,
-    full:     50,
-    override: Infinity,
-  };
-
-  const limit = LIMITS[permissionLevel] ?? 0;
-  if (amount > limit) {
+  const limit = resolveCompensationApprovalLimit(permissionLevel);
+  if (!isCompensationAmountApprovable(permissionLevel, amount)) {
     const err: any = new Error(
       `Compensation amount $${amount.toFixed(2)} exceeds ${permissionLevel} approval limit $${limit === Infinity ? '∞' : limit.toFixed(2)}`,
     );
@@ -237,7 +287,13 @@ export async function approveCompensation(
     try {
       const studentId = compensation.ticket.studentId;
       const { topUp }  = await import('../stored-value/stored-value.service');
-      await topUp(studentId, amount, actorId, `Compensation for ticket ${compensation.ticketId}`);
+      await topUp(
+        studentId,
+        amount,
+        actorId,
+        `Compensation for ticket ${compensation.ticketId}`,
+        requester,
+      );
 
       // Mark as applied
       await prisma.compensation.update({
@@ -263,14 +319,33 @@ export async function approveCompensation(
 }
 
 export async function rejectCompensation(
+  ticketId: string,
   compensationId: string,
   actorId:        string,
+  requester?:     AuthenticatedUser,
   note?:          string,
 ) {
-  const compensation = await prisma.compensation.findUnique({ where: { id: compensationId } });
+  const where: Record<string, unknown> = {
+    id: compensationId,
+    ticketId,
+  };
+  if (requester?.campusId) {
+    where.ticket = { campusId: requester.campusId };
+  }
+  if (requester?.role === 'customer_service_agent') {
+    where.ticket = {
+      createdById: requester.id,
+      campusId: requester.campusId,
+    };
+  }
+
+  const compensation = await prisma.compensation.findFirst({
+    where,
+    include: { ticket: true },
+  });
 
   if (!compensation) {
-    const err: any = new Error('Compensation not found');
+    const err: any = new Error('Compensation not found for this ticket');
     err.status = 404;
     err.code   = 'COMPENSATION_NOT_FOUND';
     throw err;

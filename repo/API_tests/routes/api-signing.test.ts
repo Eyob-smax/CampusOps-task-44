@@ -177,3 +177,67 @@ describe("API signing enforcement — valid signed parking entry", () => {
     expect(res.body.data.lotId).toBe(lotId);
   });
 });
+
+describe("API signing enforcement — scope isolation", () => {
+  it("rejects a parking-scoped key on classroom heartbeat", async () => {
+    const keyRes = await authPost("/api/admin/settings/keys", "admin", {
+      name: `scope-mismatch-parking-${Date.now()}`,
+      scope: "parking",
+    });
+    expect(keyRes.status).toBe(201);
+
+    const keyId = keyRes.body?.data?.keyId as string;
+    const secret = keyRes.body?.data?.secret as string;
+    const endpoint = "/api/classrooms/heartbeat/NODE-SCOPE-MISMATCH";
+    const payload = {};
+    const timestamp = String(Date.now());
+    const signature = computeSignature(
+      secret,
+      "POST",
+      endpoint,
+      timestamp,
+      JSON.stringify(payload),
+    );
+
+    const res = await request(app)
+      .post(endpoint)
+      .set("X-Api-Key", keyId)
+      .set("X-Timestamp", timestamp)
+      .set("X-Signature", signature)
+      .send(payload);
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("API_KEY_SCOPE_MISMATCH");
+  });
+
+  it("rejects a parking-scoped key on signed shipment sync", async () => {
+    const keyRes = await authPost("/api/admin/settings/keys", "admin", {
+      name: `scope-mismatch-shipment-${Date.now()}`,
+      scope: "parking",
+    });
+    expect(keyRes.status).toBe(201);
+
+    const keyId = keyRes.body?.data?.keyId as string;
+    const secret = keyRes.body?.data?.secret as string;
+    const endpoint = "/api/shipments/sync-signed/550e8400-e29b-41d4-a716-446655440000";
+    const payload = {};
+    const timestamp = String(Date.now());
+    const signature = computeSignature(
+      secret,
+      "POST",
+      endpoint,
+      timestamp,
+      JSON.stringify(payload),
+    );
+
+    const res = await request(app)
+      .post(endpoint)
+      .set("X-Api-Key", keyId)
+      .set("X-Timestamp", timestamp)
+      .set("X-Signature", signature)
+      .send(payload);
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("API_KEY_SCOPE_MISMATCH");
+  });
+});

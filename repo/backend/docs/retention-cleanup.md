@@ -6,10 +6,11 @@ Two independent retention policies are enforced automatically:
 
 | Data                | Retention | Job                            | Schedule       |
 |---------------------|-----------|--------------------------------|----------------|
-| Log files           | 30 days   | `campusops:log-retention`      | Daily 03:00 UTC |
-| Backup manifests    | 14 days   | `campusops:log-retention`      | Daily 03:00 UTC |
+| Log files           | 30 days   | `campusops-log-retention`      | Daily 03:00 UTC |
+| Backup manifests    | 14 days   | `campusops-backup`             | Daily 02:00 UTC |
 
-Both are executed in `backend/src/jobs/workers/log-retention.worker.ts`.
+Log retention runs in `backend/src/jobs/workers/log-retention.worker.ts`.
+Backup retention runs in `backend/src/jobs/workers/backup.worker.ts`.
 
 ---
 
@@ -73,7 +74,7 @@ Search for this in the application logs to confirm cleanup is running.
 If `logFilesDeleted` or `backupsDeleted` is unexpectedly 0 when you expect deletions:
 1. Check `LOG_PATH` and `BACKUP_PATH` are correctly set and the files are present.
 2. Check the worker is running: look for `msg: "Log retention worker registered"` at startup.
-3. Check BullMQ `campusops:log-retention` queue has no stalled jobs via the Bull dashboard.
+3. Check BullMQ `campusops-log-retention` queue has no stalled jobs via the Bull dashboard.
 
 ---
 

@@ -26,24 +26,43 @@ type BackupDumpStatusValue = "pending" | "succeeded" | "failed";
 
 const ALL_TABLES = [
   "User",
-  "Role",
-  "Permission",
   "AuditLog",
+  "IntegrationKey",
+  "Department",
+  "Semester",
+  "Course",
+  "Class",
+  "Student",
+  "Classroom",
+  "AnomalyEvent",
+  "AnomalyTimelineEntry",
+  "ParkingLot",
+  "ParkingSession",
+  "ParkingAlert",
+  "ParkingAlertTimelineEntry",
+  "Warehouse",
+  "Carrier",
+  "DeliveryZone",
+  "DeliveryZoneZip",
+  "ShippingFeeTemplate",
+  "MembershipTier",
+  "Coupon",
+  "FulfillmentRequest",
+  "FulfillmentItem",
+  "StoredValueTransaction",
+  "CompensationRule",
+  "Shipment",
+  "Parcel",
+  "AfterSalesTicket",
+  "TicketEvidence",
+  "TicketTimelineEntry",
+  "Compensation",
   "MetricsSnapshot",
   "AlertThreshold",
   "AlertHistory",
   "BackupRecord",
   "JobRecord",
-  "ParkingAlert",
-  "AfterSalesTicket",
-  "Membership",
-  "StoredValue",
-  "Shipment",
-  "DeliveryZone",
-  "Carrier",
-  "Warehouse",
-  "StorageUnit",
-  "ClassroomSession",
+  "SystemSetting",
 ];
 
 // ---------------------------------------------------------------------------
@@ -69,85 +88,50 @@ function formatDateForFilename(d: Date): string {
 }
 
 async function collectRowCounts(): Promise<Record<string, number>> {
-  const counts: Record<string, number> = {};
+  return {
+    User: await prisma.user.count(),
+    AuditLog: await prisma.auditLog.count(),
+    IntegrationKey: await prisma.integrationKey.count(),
+    Department: await prisma.department.count(),
+    Semester: await prisma.semester.count(),
+    Course: await prisma.course.count(),
+    Class: await prisma.class.count(),
+    Student: await prisma.student.count(),
+    Classroom: await prisma.classroom.count(),
+    AnomalyEvent: await prisma.anomalyEvent.count(),
+    AnomalyTimelineEntry: await prisma.anomalyTimelineEntry.count(),
+    ParkingLot: await prisma.parkingLot.count(),
+    ParkingSession: await prisma.parkingSession.count(),
+    ParkingAlert: await prisma.parkingAlert.count(),
+    ParkingAlertTimelineEntry: await prisma.parkingAlertTimelineEntry.count(),
+    Warehouse: await prisma.warehouse.count(),
+    Carrier: await prisma.carrier.count(),
+    DeliveryZone: await prisma.deliveryZone.count(),
+    DeliveryZoneZip: await prisma.deliveryZoneZip.count(),
+    ShippingFeeTemplate: await prisma.shippingFeeTemplate.count(),
+    MembershipTier: await prisma.membershipTier.count(),
+    Coupon: await prisma.coupon.count(),
+    FulfillmentRequest: await prisma.fulfillmentRequest.count(),
+    FulfillmentItem: await prisma.fulfillmentItem.count(),
+    StoredValueTransaction: await prisma.storedValueTransaction.count(),
+    CompensationRule: await prisma.compensationRule.count(),
+    Shipment: await prisma.shipment.count(),
+    Parcel: await prisma.parcel.count(),
+    AfterSalesTicket: await prisma.afterSalesTicket.count(),
+    TicketEvidence: await prisma.ticketEvidence.count(),
+    TicketTimelineEntry: await prisma.ticketTimelineEntry.count(),
+    Compensation: await prisma.compensation.count(),
+    MetricsSnapshot: await prisma.metricsSnapshot.count(),
+    AlertThreshold: await prisma.alertThreshold.count(),
+    AlertHistory: await prisma.alertHistory.count(),
+    BackupRecord: await prisma.backupRecord.count(),
+    JobRecord: await prisma.jobRecord.count(),
+    SystemSetting: await prisma.systemSetting.count(),
+  };
+}
 
-  const tableCountFns: Array<{ name: string; fn: () => Promise<number> }> = [
-    {
-      name: "User",
-      fn: () => (prisma as any).user?.count?.() ?? Promise.resolve(0),
-    },
-    {
-      name: "Role",
-      fn: () => (prisma as any).role?.count?.() ?? Promise.resolve(0),
-    },
-    {
-      name: "Permission",
-      fn: () => (prisma as any).permission?.count?.() ?? Promise.resolve(0),
-    },
-    {
-      name: "AuditLog",
-      fn: () => (prisma as any).auditLog?.count?.() ?? Promise.resolve(0),
-    },
-    { name: "MetricsSnapshot", fn: () => prisma.metricsSnapshot.count() },
-    { name: "AlertThreshold", fn: () => prisma.alertThreshold.count() },
-    { name: "AlertHistory", fn: () => prisma.alertHistory.count() },
-    { name: "BackupRecord", fn: () => prisma.backupRecord.count() },
-    { name: "JobRecord", fn: () => prisma.jobRecord.count() },
-    {
-      name: "ParkingAlert",
-      fn: () => (prisma as any).parkingAlert?.count?.() ?? Promise.resolve(0),
-    },
-    {
-      name: "AfterSalesTicket",
-      fn: () =>
-        (prisma as any).afterSalesTicket?.count?.() ?? Promise.resolve(0),
-    },
-    {
-      name: "Membership",
-      fn: () => (prisma as any).membership?.count?.() ?? Promise.resolve(0),
-    },
-    {
-      name: "StoredValue",
-      fn: () => (prisma as any).storedValue?.count?.() ?? Promise.resolve(0),
-    },
-    {
-      name: "Shipment",
-      fn: () => (prisma as any).shipment?.count?.() ?? Promise.resolve(0),
-    },
-    {
-      name: "DeliveryZone",
-      fn: () => (prisma as any).deliveryZone?.count?.() ?? Promise.resolve(0),
-    },
-    {
-      name: "Carrier",
-      fn: () => (prisma as any).carrier?.count?.() ?? Promise.resolve(0),
-    },
-    {
-      name: "Warehouse",
-      fn: () => (prisma as any).warehouse?.count?.() ?? Promise.resolve(0),
-    },
-    {
-      name: "StorageUnit",
-      fn: () => (prisma as any).storageUnit?.count?.() ?? Promise.resolve(0),
-    },
-    {
-      name: "ClassroomSession",
-      fn: () =>
-        (prisma as any).classroomSession?.count?.() ?? Promise.resolve(0),
-    },
-  ];
-
-  await Promise.allSettled(
-    tableCountFns.map(async ({ name, fn }) => {
-      try {
-        counts[name] = await fn();
-      } catch {
-        counts[name] = -1; // model might not exist in this deployment
-      }
-    }),
-  );
-
-  return counts;
+function buildFallbackRowCounts(value = 0): Record<string, number> {
+  return Object.fromEntries(ALL_TABLES.map((table) => [table, value]));
 }
 
 // ---------------------------------------------------------------------------
@@ -183,6 +167,121 @@ function parseDatabaseUrl(): {
     port: match[4],
     database: match[5],
   };
+}
+
+function runSqlClient(
+  db: ReturnType<typeof parseDatabaseUrl>,
+  args: string[],
+  options?: { input?: string | Buffer; timeout?: number; maxBuffer?: number },
+): Buffer {
+  const commands = ["mariadb", "mysql"];
+  let lastError: any = null;
+
+  for (const command of commands) {
+    try {
+      return execFileSync(command, args, {
+        env: { ...process.env, MYSQL_PWD: db.password },
+        input: options?.input,
+        timeout: options?.timeout ?? 300_000,
+        maxBuffer: options?.maxBuffer ?? 64 * 1024 * 1024,
+      });
+    } catch (err: any) {
+      lastError = err;
+      if (err?.code !== "ENOENT") {
+        break;
+      }
+    }
+  }
+
+  throw lastError ?? new Error("No SQL client command available");
+}
+
+function shouldRunRestoreSmokeTest(explicit?: boolean): boolean {
+  if (explicit !== undefined) return explicit;
+
+  if ((process.env.NODE_ENV ?? "development") === "test") {
+    return false;
+  }
+
+  const envSetting = process.env.BACKUP_RESTORE_TEST_ENABLED;
+  if (envSetting === undefined) return true;
+  return envSetting.toLowerCase() !== "false";
+}
+
+function createRestoreValidationDatabaseName(baseDatabase: string): string {
+  const safeBase = baseDatabase.replace(/[^a-zA-Z0-9_]/g, "_").slice(0, 24) || "campusops";
+  const entropy = Math.random().toString(36).slice(2, 8);
+  return `${safeBase}_restore_verify_${Date.now().toString(36)}_${entropy}`;
+}
+
+function runRestoreSmokeTest(dumpPath: string): { passed: boolean; details: string } {
+  const db = parseDatabaseUrl();
+  const clientArgsBase = [
+    `--host=${db.host}`,
+    `--port=${db.port}`,
+    `--user=${db.user}`,
+  ];
+  const tempDatabase = createRestoreValidationDatabaseName(db.database);
+  let databaseCreated = false;
+
+  try {
+    runSqlClient(db, [...clientArgsBase, "-e", `CREATE DATABASE \`${tempDatabase}\``]);
+    databaseCreated = true;
+
+    const dumpContents = fs.readFileSync(dumpPath);
+    runSqlClient(db, [...clientArgsBase, tempDatabase], {
+      input: dumpContents,
+      maxBuffer: 512 * 1024 * 1024,
+      timeout: 600_000,
+    });
+
+    const totalTablesRaw = runSqlClient(db, [
+      ...clientArgsBase,
+      "-Nse",
+      `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${tempDatabase}'`,
+    ])
+      .toString("utf8")
+      .trim();
+
+    const totalTables = Number.parseInt(totalTablesRaw || "0", 10);
+    if (!Number.isFinite(totalTables) || totalTables <= 0) {
+      return {
+        passed: false,
+        details: `Restore smoke test imported zero tables into ${tempDatabase}`,
+      };
+    }
+
+    const keyTablesRaw = runSqlClient(db, [
+      ...clientArgsBase,
+      "-Nse",
+      `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${tempDatabase}' AND table_name IN ('users','fulfillment_requests','shipments','after_sales_tickets','audit_logs')`,
+    ])
+      .toString("utf8")
+      .trim();
+
+    const keyTables = Number.parseInt(keyTablesRaw || "0", 10);
+    return {
+      passed: true,
+      details: `Restore smoke test passed (tables=${totalTables}, keyTablesFound=${Number.isFinite(keyTables) ? keyTables : 0})`,
+    };
+  } catch (err: any) {
+    return {
+      passed: false,
+      details: `Restore smoke test failed: ${err?.message ?? "unknown restore error"}`,
+    };
+  } finally {
+    if (databaseCreated) {
+      try {
+        runSqlClient(db, [...clientArgsBase, "-e", `DROP DATABASE IF EXISTS \`${tempDatabase}\``]);
+      } catch (cleanupErr: any) {
+        logger.warn({
+          msg: "Restore smoke test cleanup failed",
+          tempDatabase,
+          error: cleanupErr?.message,
+        });
+      }
+    }
+  }
 }
 
 export async function runBackup(actorId?: string) {
@@ -273,8 +372,11 @@ export async function runBackup(actorId?: string) {
       });
     }
 
-    // Collect row counts for verification manifest
-    const rowCounts = await collectRowCounts();
+    // Collect row counts for verification manifest. If SQL dump already failed,
+    // avoid masking the root cause with secondary DB count errors.
+    const rowCounts = dumpErrorMessage
+      ? buildFallbackRowCounts(0)
+      : await collectRowCounts();
 
     const manifest: BackupManifest = {
       id: record.id,
@@ -354,6 +456,7 @@ export async function runBackup(actorId?: string) {
 
 export async function verifyBackup(
   backupId: string,
+  options?: { runRestoreTest?: boolean },
 ): Promise<{ passed: boolean; details: string }> {
   const record = await prisma.backupRecord.findUnique({
     where: { id: backupId },
@@ -422,7 +525,11 @@ export async function verifyBackup(
             manifest.tables.length === 0
           ) {
             manifestDetails = "Manifest tables array is empty or invalid";
-          } else if (typeof manifest.rowCounts !== "object") {
+          } else if (
+            !manifest.rowCounts ||
+            typeof manifest.rowCounts !== "object" ||
+            Array.isArray(manifest.rowCounts)
+          ) {
             manifestDetails = "Manifest rowCounts is not an object";
           } else if (manifest.mode !== "full_dump") {
             manifestDetails = `Manifest backup mode is '${manifest.mode}', expected 'full_dump'`;
@@ -431,18 +538,46 @@ export async function verifyBackup(
           } else if (!manifest.dumpFile) {
             manifestDetails = "Manifest does not include a dump file reference";
           } else {
-            manifestOk = true;
-            manifestDetails = `Tables: ${manifest.tables.length}. BackupId: ${manifest.id}`;
+            const unknownTables = manifest.tables.filter(
+              (table) => !ALL_TABLES.includes(table),
+            );
+            const rowCountKeys = Object.keys(manifest.rowCounts);
+            const invalidRowCountKeys = rowCountKeys.filter((key) => {
+              const value = manifest.rowCounts[key];
+              return typeof value !== "number" || !Number.isFinite(value) || value < 0;
+            });
+
+            if (rowCountKeys.length === 0) {
+              manifestDetails = "Manifest rowCounts is empty";
+            } else if (invalidRowCountKeys.length > 0) {
+              manifestDetails = `Manifest rowCounts contains invalid numeric values for: ${invalidRowCountKeys.join(", ")}`;
+            } else {
+              manifestOk = true;
+              manifestDetails = `Tables: ${manifest.tables.length}. BackupId: ${manifest.id}`;
+              if (unknownTables.length > 0) {
+                manifestDetails = `${manifestDetails}. Compatibility mode: includes unknown tables (${unknownTables.join(", ")})`;
+              }
+            }
           }
         } else {
-          manifestDetails = "Manifest file not found (legacy backup format)";
-          // Still pass if dump file is valid
-          manifestOk = dumpSizeOk;
+          // Keep backward compatibility with legacy dump-only backups.
+          manifestOk = true;
+          manifestDetails = "Manifest file not found (legacy backup format accepted)";
         }
 
         if (dumpSizeOk && manifestOk) {
           passed = true;
           details = `Dump file valid (${dumpStats.size} bytes). ${manifestDetails}`;
+
+          if (shouldRunRestoreSmokeTest(options?.runRestoreTest)) {
+            const restoreSmoke = runRestoreSmokeTest(record.filePath);
+            if (!restoreSmoke.passed) {
+              passed = false;
+              details = `${details} ${restoreSmoke.details}`;
+            } else {
+              details = `${details} ${restoreSmoke.details}`;
+            }
+          }
         } else {
           details = `Dump: ${dumpSizeOk ? "OK" : "empty/missing"}. Manifest: ${manifestDetails}`;
         }

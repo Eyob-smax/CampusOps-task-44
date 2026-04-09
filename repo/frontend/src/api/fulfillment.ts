@@ -1,7 +1,7 @@
 import { apiClient } from './client';
 
 // ---- Types ----
-export type FulfillmentStatus = 'draft' | 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+export type FulfillmentStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
 
 export interface FulfillmentItem {
   id: string;

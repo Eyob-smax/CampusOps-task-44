@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requirePermission } from '../../middleware/auth.middleware';
-import { privilegedApiSigning } from '../../middleware/api-signing.middleware';
+import { privilegedApiSigningForScope } from '../../middleware/api-signing.middleware';
 import {
   getClassroomsHandler,
   getClassroomStatsHandler,
@@ -11,7 +11,7 @@ import {
 const router = Router();
 
 // Heartbeat — hardware nodes POST this; protected by HMAC API signing
-router.post('/heartbeat/:nodeId', privilegedApiSigning, heartbeatHandler);
+router.post('/heartbeat/:nodeId', privilegedApiSigningForScope('classroom'), heartbeatHandler);
 
 // All other classroom endpoints require JWT authentication
 router.use(authenticate);

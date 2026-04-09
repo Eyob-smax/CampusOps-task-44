@@ -18,6 +18,7 @@ export interface ParkingLotStats extends ParkingLot {
 export interface ParkingDashboard {
   totalLots: number; totalSpaces: number; occupiedSpaces: number;
   availableSpaces: number; occupancyPct: number;
+  turnoverPerHour: number;
   activeAlerts: number; escalatedAlerts: number;
   lots: ParkingLot[];
 }

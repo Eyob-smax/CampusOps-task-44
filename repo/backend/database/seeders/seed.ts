@@ -220,17 +220,24 @@ async function main() {
 
   // ---- Alert Thresholds ----
   const thresholds = [
-    { metricName: "http_p95_latency_ms", operator: "gt", value: 2000 },
-    { metricName: "http_error_rate", operator: "gt", value: 5 },
-    { metricName: "cpu_utilization", operator: "gt", value: 85 },
-    { metricName: "queue_depth", operator: "gt", value: 100 },
+    { metricName: "cpu_utilization_percent", operator: ">", value: 85 },
+    { metricName: "memory_used_mb", operator: ">", value: 8192 },
+    { metricName: "active_jobs", operator: ">", value: 100 },
+    { metricName: "open_parking_alerts", operator: ">", value: 20 },
   ];
 
   for (const t of thresholds) {
     await prisma.alertThreshold.upsert({
       where: { metricName: t.metricName },
-      update: {},
-      create: t,
+      update: {
+        operator: t.operator,
+        value: t.value,
+        isActive: true,
+      },
+      create: {
+        ...t,
+        isActive: true,
+      },
     });
   }
   console.log("[seed] Alert thresholds: OK");

@@ -44,20 +44,13 @@ Copy the output — this is your new `JWT_SECRET`.
 
 #### Docker / Docker Compose
 
-Edit `docker-compose.yml` or your secrets manager:
-
-```yaml
-environment:
-  JWT_SECRET: <new-secret-here>
-```
-
-#### PM2 / systemd
-
-Edit your `.env` file or systemd unit file:
+CampusOps uses Docker secrets for JWT signing key material. Update:
 
 ```
-JWT_SECRET=<new-secret-here>
+repo/runtime-secrets/jwt_secret.txt
 ```
+
+Then recreate the backend container so `/run/secrets/jwt_secret` is reloaded.
 
 #### Kubernetes
 
@@ -72,11 +65,7 @@ kubectl create secret generic campusops-secrets \
 ### 3. Restart the backend
 
 ```bash
-# PM2
-pm2 restart campusops-api
-
-# Docker Compose
-docker compose up -d --force-recreate api
+docker compose up -d --force-recreate backend
 
 # Kubernetes
 kubectl rollout restart deployment/campusops-api
@@ -86,12 +75,12 @@ kubectl rollout restart deployment/campusops-api
 
 ```bash
 # Health check
-curl https://your-domain/api/health
+curl https://your-domain/health
 
 # Attempt login with valid credentials — should return a new token
 curl -X POST https://your-domain/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@example.com","password":"..."}'
+  -d '{"username":"admin","password":"..."}'
 ```
 
 Verify the returned token works for a protected endpoint.

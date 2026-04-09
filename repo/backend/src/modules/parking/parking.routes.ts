@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requirePermission } from '../../middleware/auth.middleware';
-import { privilegedApiSigning } from '../../middleware/api-signing.middleware';
+import { privilegedApiSigningForScope } from '../../middleware/api-signing.middleware';
 import { idempotency } from '../../middleware/idempotency.middleware';
 import {
   getLotsHandler,
@@ -14,8 +14,8 @@ import {
 const router = Router();
 
 // Hardware ingest routes — protected by HMAC API signing (no JWT needed)
-router.post('/sessions/entry', privilegedApiSigning, idempotency, recordEntryHandler);
-router.post('/sessions/exit',  privilegedApiSigning, idempotency, recordExitHandler);
+router.post('/sessions/entry', privilegedApiSigningForScope('parking'), idempotency, recordEntryHandler);
+router.post('/sessions/exit',  privilegedApiSigningForScope('parking'), idempotency, recordExitHandler);
 
 // All other parking endpoints require JWT authentication
 router.use(authenticate);

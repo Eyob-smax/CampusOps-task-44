@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requirePermission } from '../../middleware/auth.middleware';
+import { authenticate, requirePermission, requireAnyPermission } from '../../middleware/auth.middleware';
 import { idempotency } from '../../middleware/idempotency.middleware';
 import {
   listTicketsHandler,
@@ -83,20 +83,31 @@ router.post(
   '/:id/compensations/suggest',
   authenticate,
   requirePermission('compensation:suggest'),
+  idempotency,
   suggestCompensationHandler,
 );
 
 router.patch(
   '/:id/compensations/:cid/approve',
   authenticate,
-  requirePermission('compensation:approve-limited'),
+  requireAnyPermission([
+    'compensation:approve-limited',
+    'compensation:approve-full',
+    'compensation:approve-override',
+  ]),
+  idempotency,
   approveCompensationHandler,
 );
 
 router.patch(
   '/:id/compensations/:cid/reject',
   authenticate,
-  requirePermission('compensation:approve-limited'),
+  requireAnyPermission([
+    'compensation:approve-limited',
+    'compensation:approve-full',
+    'compensation:approve-override',
+  ]),
+  idempotency,
   rejectCompensationHandler,
 );
 

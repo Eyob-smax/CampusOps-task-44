@@ -84,20 +84,26 @@
     </el-row>
 
     <!-- Metrics bar -->
-    <el-row :gutter="16" class="metrics-bar" v-if="metrics">
-      <el-col :span="8">
+    <el-row :gutter="16" class="metrics-bar" v-if="metrics && dashboard">
+      <el-col :span="6">
+        <el-card shadow="never" class="metric-card">
+          <div class="metric-label">Turnover (entries/hour)</div>
+          <div class="metric-value">{{ dashboard.turnoverPerHour }}</div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
         <el-card shadow="never" class="metric-card">
           <div class="metric-label">Alert Creation Rate</div>
           <div class="metric-value">{{ metrics.creationRatePerHour }}/hr</div>
         </el-card>
       </el-col>
-      <el-col :span="8">
+      <el-col :span="6">
         <el-card shadow="never" class="metric-card">
           <div class="metric-label">Mean Time to Close</div>
           <div class="metric-value">{{ metrics.meanTimeToCloseMin }} min</div>
         </el-card>
       </el-col>
-      <el-col :span="8">
+      <el-col :span="6">
         <el-card shadow="never" class="metric-card">
           <div class="metric-label">Total Closed (all time)</div>
           <div class="metric-value">{{ metrics.totalClosed }}</div>

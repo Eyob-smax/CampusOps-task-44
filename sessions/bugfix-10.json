@@ -1,0 +1,59 @@
+{
+  "id": "bugfix-10",
+  "title": "Cycle-04 fix-check closure, documentation contract reconciliation, and stale-endpoint sweep",
+  "severity": "medium",
+  "status": "resolved",
+  "dateFound": "2026-04-08",
+  "dateResolved": "2026-04-08",
+  "affectedFiles": [
+    "docs/api-spec.md",
+    "repo/docs/acceptance-checklist.md",
+    "repo/docs/test-plan.md",
+    ".tmp/self_test_reports/cycle-04/audit_report-4-fix_check_round1.md"
+  ],
+  "description": "Completed cycle-04 fix-check reporting for the prior audit findings, reconciled stale API/documentation contract drift in acceptance and test-plan docs, and verified no stale endpoint patterns remain in docs for the audited legacy patterns.",
+  "errors": [
+    {
+      "file": "repo/docs/acceptance-checklist.md",
+      "error": "Acceptance checklist contained stale/incorrect endpoint and capability references for parking operations, job triggering, export format scope, and observability metric wording.",
+      "cause": "Checklist lines drifted after backend route and capability updates were completed in earlier sessions.",
+      "fix": "Updated parking endpoint evidence to dashboard/lots stats routes, replaced stale manual trigger route with existing `/api/jobs/:id/retry` semantics, updated export evidence to CSV/XLSX, and clarified runtime metrics to include p95 latency and error rate."
+    },
+    {
+      "file": "docs/api-spec.md",
+      "error": "API spec had stale field contracts for job records, anomaly assignment payload, and shipment creation payload.",
+      "cause": "Spec rows were partially outdated relative to current controllers/services after prior remediation work.",
+      "fix": "Aligned docs to implemented schema/handlers: updated job record fields/status set, corrected anomaly assign field to `assignedToId`, and corrected shipment create payload to `fulfillmentRequestId`, `carrierId`, `warehouseId`, `estimatedDeliveryAt?`."
+    },
+    {
+      "file": "repo/docs/test-plan.md",
+      "error": "Test-plan API inventory lagged behind current test coverage for idempotency expansion, shipment-sync monitor visibility, parking detector automation, observability metric semantics, and XLSX export behavior.",
+      "cause": "Coverage summary text was not refreshed after tests were expanded in earlier fixes.",
+      "fix": "Refreshed API test inventory descriptions to reflect current route-level and behavior-level assertions now present in idempotency/jobs/parking/observability/master-data test suites."
+    },
+    {
+      "file": ".tmp/self_test_reports/cycle-04/audit_report-4-fix_check_round1.md",
+      "error": "Cycle-04 round-1 fix-check artifact did not exist.",
+      "cause": "Findings were remediated previously, but the dedicated cycle-04 closure artifact had not been written.",
+      "fix": "Created cycle-04 fix-check report with finding-by-finding status, line-linked evidence, documentation reconciliation notes, stale-endpoint scan result, and runtime verification summary."
+    }
+  ],
+  "rootCause": "Post-remediation documentation and closure-artifact lag: implementation-level fixes existed, but acceptance/spec/test-plan narratives required final synchronization and a formal cycle-04 closure record.",
+  "impact": "Without this session's updates, acceptance evidence would remain harder to audit due to stale contract references and a missing cycle-04 closure artifact, despite underlying implementation fixes being present.",
+  "validation": {
+    "method": "Static documentation/endpoint pattern scans plus targeted Dockerized runtime verification executed in this session.",
+    "result": "Session-scope fixes verified",
+    "summary": {
+      "cycle04FixCheckReport": "PASS",
+      "docsContractReconciliation": "PASS",
+      "staleEndpointScan": "PASS",
+      "staleEndpointPatternsFoundInDocs": 0,
+      "backendUnit": "PASS",
+      "backendUnitTestFiles": 27,
+      "backendUnitTests": 526,
+      "targetedApiSuites": "PASS",
+      "targetedApiSuiteCount": 4,
+      "targetedApiTests": 186
+    }
+  }
+}

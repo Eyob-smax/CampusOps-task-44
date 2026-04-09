@@ -12,17 +12,27 @@ networks:
 
 volumes:
   db-data:
-    name: campusops-task15-db-data
+    name: campusops-task44-db-data
   redis-data:
-    name: campusops-task15-redis-data
+    name: campusops-task44-redis-data
   storage-data:
-    name: campusops-task15-storage-data
+    name: campusops-task44-storage-data
   logs-data:
-    name: campusops-task15-logs-data
+    name: campusops-task44-logs-data
   backups-data:
-    name: campusops-task15-backups-data
+    name: campusops-task44-backups-data
   tls-certs-data:
-    name: campusops-task15-tls-certs-data
+    name: campusops-task44-tls-certs-data
+
+secrets:
+  db_password:
+    file: ./runtime-secrets/db_password.txt
+  db_root_password:
+    file: ./runtime-secrets/db_root_password.txt
+  jwt_secret:
+    file: ./runtime-secrets/jwt_secret.txt
+  encryption_key:
+    file: ./runtime-secrets/encryption_key.txt
 
 services:
   # ----------------------------------------------------------
@@ -33,10 +43,13 @@ services:
     image: mysql:8.0
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: campusops_dev
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
       MYSQL_DATABASE: campusops
       MYSQL_USER: campusops
-      MYSQL_PASSWORD: campusops_dev
+      MYSQL_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+      - db_root_password
     volumes:
       - db-data:/var/lib/mysql
       - ./backend/database/init:/docker-entrypoint-initdb.d:ro
@@ -46,7 +59,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "mysql --protocol=TCP -h127.0.0.1 -ucampusops -pcampusops_dev -e 'SELECT 1' >/dev/null 2>&1",
+          "mysqladmin --protocol=TCP -h127.0.0.1 ping >/dev/null 2>&1",
         ]
       interval: 10s
       timeout: 5s
@@ -86,19 +99,20 @@ services:
       DB_PORT: "3306"
       DB_NAME: campusops
       DB_USER: campusops
-      DB_PASSWORD: campusops_dev
-      JWT_SECRET: campusops_jwt_dev_only_change_me
-      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       REDIS_URL: redis://redis:6379
       STORAGE_PATH: /data/storage
       LOG_PATH: /logs
       BACKUP_PATH: /backups
       LOG_LEVEL: info
-      SEED_ADMIN_PASSWORD: "Admin#12345"
-      SEED_OPS_MANAGER_PASSWORD: "OpsManager#12345"
-      SEED_SUPERVISOR_PASSWORD: "Supervisor#12345"
-      SEED_CS_AGENT_PASSWORD: "CsAgent#12345"
-      SEED_AUDITOR_PASSWORD: "Auditor#12345"
+      SEED_ADMIN_PASSWORD: "CHANGE_ME_ADMIN_PASSWORD"
+      SEED_OPS_MANAGER_PASSWORD: "CHANGE_ME_OPS_PASSWORD"
+      SEED_SUPERVISOR_PASSWORD: "CHANGE_ME_SUPERVISOR_PASSWORD"
+      SEED_CS_AGENT_PASSWORD: "CHANGE_ME_CS_PASSWORD"
+      SEED_AUDITOR_PASSWORD: "CHANGE_ME_AUDITOR_PASSWORD"
+    secrets:
+      - db_password
+      - jwt_secret
+      - encryption_key
     volumes:
       - storage-data:/data/storage
       - logs-data:/logs

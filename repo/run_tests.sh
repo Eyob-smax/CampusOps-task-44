@@ -19,6 +19,9 @@ print_header() {
 
 COMPOSE_TEST="docker compose -f docker-compose.yml -f docker-compose.test.yml"
 PROJECT_NAME="campusops-test"
+# Use a per-run volume namespace to avoid lock collisions with leftovers
+# from other compose projects that may have reused static volume names.
+export TEST_PROJECT_NAME="${PROJECT_NAME}-${RANDOM}"
 COMPOSE_TEST="docker compose -p ${PROJECT_NAME} -f docker-compose.yml -f docker-compose.test.yml"
 
 cleanup() {
@@ -26,6 +29,31 @@ cleanup() {
 }
 
 trap cleanup EXIT
+
+bootstrap_runtime_secrets() {
+  local template_dir="secrets"
+  local runtime_dir="runtime-secrets"
+
+  mkdir -p "$runtime_dir"
+
+  for name in db_password db_root_password jwt_secret encryption_key; do
+    local src="$template_dir/${name}.txt.example"
+    local dst="$runtime_dir/${name}.txt"
+
+    # Repair accidental directory paths (can happen after failed secret mounts).
+    if [[ -d "$dst" ]]; then
+      rm -rf "$dst"
+      echo "[run_tests] Repaired malformed secret path directory: $dst"
+    fi
+
+    if [[ -f "$src" && ! -f "$dst" ]]; then
+      cp "$src" "$dst"
+      echo "[run_tests] Created missing $dst from template"
+    fi
+  done
+}
+
+bootstrap_runtime_secrets
 
 # Start from a clean isolated test stack every run.
 cleanup

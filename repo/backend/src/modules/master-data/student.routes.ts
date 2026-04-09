@@ -26,7 +26,7 @@ router.post(
   createStudentHandler,
 );
 
-router.put('/:id',     requirePermission('students:write'), updateStudentHandler);
+router.put('/:id',     requirePermission('students:write'), idempotency, updateStudentHandler);
 router.delete('/:id',  requirePermission('students:write'), deactivateStudentHandler);
 
 // Bulk import — multipart; idempotency key optional but honoured

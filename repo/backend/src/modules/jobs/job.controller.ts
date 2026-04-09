@@ -11,6 +11,7 @@ export async function getJobs(req: Request, res: Response, next: NextFunction): 
       queueName: req.query['queue']    as string | undefined,
       status:    req.query['status']   as string | undefined as any,
       actorId:   req.query['actorId']  as string | undefined,
+      campusId:  req.user?.campusId,
       from:      req.query['from'] ? new Date(req.query['from'] as string) : undefined,
       to:        req.query['to']   ? new Date(req.query['to']   as string) : undefined,
       page:      req.query['page']  ? Number(req.query['page'])  : undefined,
@@ -24,6 +25,10 @@ export async function getJob(req: Request, res: Response, next: NextFunction): P
   try {
     const job = await getJobById(req.params.id);
     if (!job) { res.status(404).json({ success: false, error: 'Job not found', code: 'NOT_FOUND' }); return; }
+    if (job.campusId && req.user?.campusId && job.campusId !== req.user.campusId) {
+      res.status(404).json({ success: false, error: 'Job not found', code: 'NOT_FOUND' });
+      return;
+    }
     res.json({ success: true, data: job });
   } catch (err) { next(err); }
 }
@@ -32,6 +37,10 @@ export async function downloadErrorReport(req: Request, res: Response, next: Nex
   try {
     const job = await getJobById(req.params.id);
     if (!job) { res.status(404).json({ success: false, error: 'Job not found', code: 'NOT_FOUND' }); return; }
+    if (job.campusId && req.user?.campusId && job.campusId !== req.user.campusId) {
+      res.status(404).json({ success: false, error: 'Job not found', code: 'NOT_FOUND' });
+      return;
+    }
     if (!job.hasErrorReport || !job.result?.['errorReportPath']) {
       res.status(404).json({ success: false, error: 'No error report available for this job', code: 'NOT_FOUND' });
       return;
@@ -51,6 +60,10 @@ export async function retryJob(req: Request, res: Response, next: NextFunction):
   try {
     const job = await getJobById(req.params.id);
     if (!job) { res.status(404).json({ success: false, error: 'Job not found', code: 'NOT_FOUND' }); return; }
+    if (job.campusId && req.user?.campusId && job.campusId !== req.user.campusId) {
+      res.status(404).json({ success: false, error: 'Job not found', code: 'NOT_FOUND' });
+      return;
+    }
 
     if (job.status !== 'failed') {
       res.status(400).json({ success: false, error: 'Only failed jobs can be retried', code: 'INVALID_STATE' });
@@ -72,6 +85,7 @@ export async function retryJob(req: Request, res: Response, next: NextFunction):
       jobRecordId: job.id,
       filePath,
       actorId: req.user!.id,
+      campusId: job.campusId ?? req.user!.campusId,
     });
 
     await updateJobRecord(job.id, {

@@ -55,7 +55,7 @@ const page     = ref(1);
 const limit    = 20;
 const filterStatus = ref('');
 
-const statusOptions: FulfillmentStatus[] = ['draft', 'pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+const statusOptions: FulfillmentStatus[] = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
 
 async function load() {
   loading.value = true;
@@ -76,7 +76,7 @@ onMounted(load);
 function capitalize(s: string) { return s.charAt(0).toUpperCase() + s.slice(1); }
 function statusTagType(s: string): '' | 'success' | 'warning' | 'danger' | 'info' {
   const map: Record<string, '' | 'success' | 'warning' | 'danger' | 'info'> = {
-    draft: 'info', pending: '', processing: 'warning',
+    pending: '', processing: 'warning',
     shipped: 'warning', delivered: 'success', cancelled: 'danger',
   };
   return map[s] ?? 'info';

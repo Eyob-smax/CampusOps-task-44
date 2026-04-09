@@ -1,0 +1,62 @@
+{
+  "id": "bugfix-12",
+  "title": "Cycle-06 backup regression fix closure and stale-endpoint documentation sweep",
+  "severity": "high",
+  "status": "resolved",
+  "dateFound": "2026-04-09",
+  "dateResolved": "2026-04-09",
+  "affectedFiles": [
+    "repo/backend/src/modules/observability/backup.service.ts",
+    ".tmp/self_test_reports/cycle-06/audit_report_6_fix-check_round1.md",
+    "repo/docs/troubleshooting.md",
+    "sessions/bugfix-12.json"
+  ],
+  "description": "Closed this session's remaining cycle-06 backup regressions, captured the finding-by-finding fix-check artifact, verified Dockerized test execution directly via compose, and removed the last stale endpoint reference found during this session's documentation sweep.",
+  "errors": [
+    {
+      "file": "repo/backend/src/modules/observability/backup.service.ts",
+      "error": "Three backup unit tests failed around dump-failure handling and verify compatibility paths.",
+      "cause": "Backup execution attempted DB row-count collection after dump failure (masking root dump error), and verify logic was too strict for legacy/mixed manifests.",
+      "fix": "Updated backup flow to preserve SQL dump failure as primary error, added fallback row-count behavior when dump fails, and relaxed verify compatibility to accept legacy manifest-absent backups while still rejecting malformed manifests."
+    },
+    {
+      "file": ".tmp/self_test_reports/cycle-06/audit_report_6_fix-check_round1.md",
+      "error": "Cycle-06 round-1 fix-check artifact was missing for this session's requested review.",
+      "cause": "Findings were reviewed and fixes were applied, but no persisted session report existed yet.",
+      "fix": "Created the round-1 fix-check report with per-finding status, static evidence, Dockerized test outcomes, and gate recommendation."
+    },
+    {
+      "file": "repo/docs/troubleshooting.md",
+      "error": "A stale endpoint reference remained in the troubleshooting guide (`/api/alerts/:alertHistoryId/acknowledge`).",
+      "cause": "Documentation drift from earlier route contract updates.",
+      "fix": "Replaced the stale path with the current endpoint contract: `/api/alerts/:id/acknowledge` and re-ran legacy endpoint scans across docs."
+    },
+    {
+      "file": "sessions/bugfix-12.json",
+      "error": "No session ledger entry existed for this cycle-06 backup regression closure work.",
+      "cause": "Session outcomes were completed before writing the corresponding bugfix ledger file.",
+      "fix": "Added this bugfix-12 record using the established bugfix session schema and limited scope to this session's fixes and validation."
+    }
+  ],
+  "rootCause": "Failure-path hardening and verification-compatibility logic in backup handling lagged behind expected test behavior, plus one residual stale documentation endpoint remained from previous contract changes.",
+  "impact": "Before this session closure, backup regressions caused failing unit tests and could obscure primary dump errors; documentation also contained one stale endpoint that could mislead operators.",
+  "validation": {
+    "method": "Dockerized test execution (compose direct commands, not run_tests.sh) plus documentation stale-endpoint pattern scans.",
+    "result": "Session fixes verified",
+    "summary": {
+      "backupUnitRegressionsFixed": "PASS",
+      "cycle06FixCheckReport": "PASS",
+      "backendUnit": "PASS",
+      "backendUnitSuites": 27,
+      "backendUnitTests": 526,
+      "frontendUnit": "PASS",
+      "frontendUnitSuites": 11,
+      "frontendUnitTests": 283,
+      "apiFunctional": "PASS",
+      "apiSuites": 12,
+      "apiTests": 428,
+      "staleEndpointDocScan": "PASS",
+      "staleEndpointPatternsFoundInDocs": 0
+    }
+  }
+}

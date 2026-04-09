@@ -4,6 +4,7 @@
  */
 import request from 'supertest';
 import { app, authGet, authPost, authPut, authPatch, authDelete, loginAs, uuid } from '../helpers/setup';
+import { recordMetric } from '../../src/modules/observability/metrics.service';
 
 const validUuid = '550e8400-e29b-41d4-a716-446655440000';
 
@@ -38,6 +39,23 @@ describe('GET /api/metrics', () => {
     const res = await authGet('/api/metrics', 'agent');
     expect(res.status).toBe(403);
   });
+
+  it('includes p95 latency and error-rate metric snapshots when present', async () => {
+    await recordMetric('api_latency_p95_ms', 245.12);
+    await recordMetric('api_error_rate_percent', 1.75);
+
+    const res = await authGet('/api/metrics', 'admin');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data)).toBe(true);
+
+    const metrics = (res.body.data ?? []) as Array<{ metricName: string; value: unknown }>;
+    const byName = new Map(metrics.map((m) => [m.metricName, m.value]));
+
+    expect(byName.has('api_latency_p95_ms')).toBe(true);
+    expect(byName.has('api_error_rate_percent')).toBe(true);
+    expect(typeof byName.get('api_latency_p95_ms')).toBe('number');
+    expect(typeof byName.get('api_error_rate_percent')).toBe('number');
+  });
 });
 
 describe('GET /api/metrics/:name/history', () => {
@@ -49,6 +67,19 @@ describe('GET /api/metrics/:name/history', () => {
   it('returns 200 for admin', async () => {
     const res = await authGet('/api/metrics/cpu_utilization_percent/history', 'admin');
     expect(res.status).toBe(200);
+  });
+
+  it('returns history for api_latency_p95_ms with numeric values', async () => {
+    await recordMetric('api_latency_p95_ms', 333.44);
+
+    const res = await authGet('/api/metrics/api_latency_p95_ms/history', 'admin');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data)).toBe(true);
+
+    const [first] = (res.body.data ?? []) as Array<{ value: unknown }>;
+    if (first) {
+      expect(typeof first.value).toBe('number');
+    }
   });
 });
 
@@ -80,6 +111,15 @@ describe('PATCH /api/alerts/:id/acknowledge', () => {
   it('returns 401 without token', async () => {
     const res = await request(app).patch(`/api/alerts/${validUuid}/acknowledge`);
     expect(res.status).toBe(401);
+  });
+
+  it('requires idempotency key for admin', async () => {
+    const token = await loginAs('admin');
+    const res = await request(app)
+      .patch(`/api/alerts/${validUuid}/acknowledge`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MISSING_IDEMPOTENCY_KEY');
   });
 
   it('returns 403 for ops_manager (no alerts:manage)', async () => {

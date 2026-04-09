@@ -4,6 +4,30 @@
  */
 import request from 'supertest';
 import { app, SEED_USERS, loginAs, authGet, uuid } from '../helpers/setup';
+import { prisma } from '../../src/lib/prisma';
+import { encrypt } from '../../src/lib/encryption';
+
+async function createAuditLogFixture() {
+  const admin = await prisma.user.findUnique({
+    where: { username: 'admin' },
+    select: { id: true },
+  });
+
+  if (!admin) {
+    throw new Error('Missing seeded admin user');
+  }
+
+  return prisma.auditLog.create({
+    data: {
+      actorId: admin.id,
+      action: 'fixture:audit-entry',
+      entityType: 'fixture',
+      entityId: uuid(),
+      encryptedDetail: encrypt(JSON.stringify({ reason: 'unit-test', level: 'sensitive' })),
+    },
+    select: { id: true, entityId: true },
+  });
+}
 
 describe('POST /api/auth/login', () => {
   it('returns 400 when username is missing', async () => {
@@ -43,6 +67,9 @@ describe('POST /api/auth/login', () => {
     expect(res.body.data.refreshToken).toBeDefined();
     expect(typeof res.body.data.expiresIn).toBe('number');
     expect(res.body.data.user.role).toBe('administrator');
+    expect(typeof res.body.data.user.campusId).toBe('string');
+    const setCookie = (res.headers['set-cookie'] ?? []) as string[];
+    expect(setCookie.some((v) => v.startsWith('refreshToken='))).toBe(true);
   });
 
   it('returns 200 with valid ops_manager credentials', async () => {
@@ -82,6 +109,7 @@ describe('GET /api/auth/me', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data.username).toBe('admin');
     expect(res.body.data.role).toBe('administrator');
+    expect(typeof res.body.data.campusId).toBe('string');
   });
 
   it('returns 200 with valid auditor token and correct role', async () => {
@@ -92,7 +120,7 @@ describe('GET /api/auth/me', () => {
 });
 
 describe('POST /api/auth/refresh', () => {
-  it('returns 400 when refreshToken is missing', async () => {
+  it('returns 400 when refreshToken is missing in both body and cookie', async () => {
     const res = await request(app).post('/api/auth/refresh').send({});
     expect(res.status).toBe(400);
   });
@@ -119,6 +147,34 @@ describe('POST /api/auth/refresh', () => {
     // New tokens should be different
     expect(refreshRes.body.data.accessToken).not.toBe(loginRes.body.data.accessToken);
   });
+
+  it('rotates tokens with valid refresh token from cookie only', async () => {
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ username: SEED_USERS.admin.username, password: SEED_USERS.admin.password });
+    expect(loginRes.status).toBe(200);
+
+    const setCookie = (loginRes.headers['set-cookie'] ?? []) as string[];
+    const refreshCookie = setCookie.find((v) => v.startsWith('refreshToken='));
+    expect(refreshCookie).toBeDefined();
+
+    const refreshRes = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', (refreshCookie as string).split(';')[0])
+      .send({});
+
+    expect(refreshRes.status).toBe(200);
+    expect(refreshRes.body.data.accessToken).toBeDefined();
+    expect(refreshRes.body.data.refreshToken).toBeDefined();
+  });
+
+  it('returns 401 with invalid refresh token from cookie', async () => {
+    const res = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', 'refreshToken=garbage.token.value')
+      .send({});
+    expect(res.status).toBe(401);
+  });
 });
 
 describe('POST /api/auth/logout', () => {
@@ -138,6 +194,8 @@ describe('POST /api/auth/logout', () => {
       .post('/api/auth/logout')
       .set('Authorization', `Bearer ${token}`);
     expect(logoutRes.status).toBe(200);
+    const logoutCookies = (logoutRes.headers['set-cookie'] ?? []) as string[];
+    expect(logoutCookies.some((v) => v.startsWith('refreshToken=;'))).toBe(true);
 
     // Token should be revoked — subsequent use returns 401
     const meRes = await request(app)
@@ -183,6 +241,36 @@ describe('RBAC — protected admin routes', () => {
   it('GET /api/admin/audit returns 403 for cs_agent', async () => {
     const res = await authGet('/api/admin/audit', 'agent');
     expect(res.status).toBe(403);
+  });
+
+  it('POST /api/admin/audit/reveal/:id returns 403 for auditor', async () => {
+    const fixture = await createAuditLogFixture();
+    const token = await loginAs('auditor');
+
+    const res = await request(app)
+      .post(`/api/admin/audit/reveal/${fixture.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ justification: 'Investigating potential data access event' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
+  });
+
+  it('POST /api/admin/audit/reveal/:id reveals details by audit-log primary id for admin', async () => {
+    const fixture = await createAuditLogFixture();
+    expect(fixture.id).not.toBe(fixture.entityId);
+
+    const token = await loginAs('admin');
+    const res = await request(app)
+      .post(`/api/admin/audit/reveal/${fixture.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ justification: 'Investigating potential security incident and traceability needs' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.id).toBe(fixture.id);
+    expect(res.body.data.entityId).toBe(fixture.entityId);
+    expect(res.body.data.detail).toMatchObject({ reason: 'unit-test', level: 'sensitive' });
   });
 
   it('GET /api/admin/settings returns 200 for admin', async () => {

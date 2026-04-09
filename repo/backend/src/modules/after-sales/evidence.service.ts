@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import { prisma } from '../../lib/prisma';
 import { config } from '../../config';
 import { logger } from '../../lib/logger';
+import type { AuthenticatedUser } from '../../types';
 
 // ---- Magic bytes for JPEG and PNG ----
 
@@ -68,6 +69,13 @@ export function hammingDistance(hashA: string, hashB: string): number {
 
 // ---- Duplicate detection ----
 
+export function isHashWithinDuplicateThreshold(
+  distance: number,
+  threshold = config.perceptualHash.hammingDistanceThreshold,
+): boolean {
+  return distance <= threshold;
+}
+
 export async function checkDuplicate(ticketId: string, hash: string): Promise<boolean> {
   const existing = await prisma.ticketEvidence.findMany({
     where: {
@@ -77,8 +85,9 @@ export async function checkDuplicate(ticketId: string, hash: string): Promise<bo
     },
   });
 
+  const threshold = config.perceptualHash.hammingDistanceThreshold;
   for (const ev of existing) {
-    if (ev.fileHash && hammingDistance(hash, ev.fileHash) <= 5) {
+    if (ev.fileHash && isHashWithinDuplicateThreshold(hammingDistance(hash, ev.fileHash), threshold)) {
       return true;
     }
   }
@@ -94,12 +103,25 @@ export interface CropRect {
   height: number;
 }
 
+async function getScopedTicket(ticketId: string, requester?: AuthenticatedUser) {
+  const where: Record<string, unknown> = { id: ticketId };
+  if (requester?.campusId) {
+    where.campusId = requester.campusId;
+  }
+  if (requester?.role === 'customer_service_agent') {
+    where.createdById = requester.id;
+  }
+
+  return prisma.afterSalesTicket.findFirst({ where });
+}
+
 export async function uploadEvidenceImage(
   ticketId:  string,
   fileBuffer: Buffer,
   mimeType:  string,
   actorId:   string,
   cropRect?: CropRect,
+  requester?: AuthenticatedUser,
 ) {
   // 1. Validate MIME type
   if (!['image/jpeg', 'image/png'].includes(mimeType)) {
@@ -127,7 +149,7 @@ export async function uploadEvidenceImage(
   }
 
   // 4. Validate ticket exists
-  const ticket = await prisma.afterSalesTicket.findUnique({ where: { id: ticketId } });
+  const ticket = await getScopedTicket(ticketId, requester);
   if (!ticket) {
     const err: any = new Error('After-sales ticket not found');
     err.status = 404;
@@ -168,8 +190,7 @@ export async function uploadEvidenceImage(
   }
 
   // 8. Persist file
-  const uploadPath = (config as any).files?.uploadPath ?? './uploads';
-  const uploadDir  = path.resolve(uploadPath);
+  const uploadDir = path.resolve(config.storage.path, 'evidence');
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
   }
@@ -198,9 +219,10 @@ export async function addTextEvidence(
   ticketId: string,
   note:     string,
   actorId:  string,
+  requester?: AuthenticatedUser,
 ) {
   // Validate ticket exists
-  const ticket = await prisma.afterSalesTicket.findUnique({ where: { id: ticketId } });
+  const ticket = await getScopedTicket(ticketId, requester);
   if (!ticket) {
     const err: any = new Error('After-sales ticket not found');
     err.status = 404;

@@ -4,12 +4,14 @@
  */
 import request from 'supertest';
 import { app, loginAs, authGet, authPost, authPut, authDelete, uuid } from '../helpers/setup';
+import { prisma } from '../../src/lib/prisma';
 
 async function postImportCsv(path: string, role: 'admin' | 'ops' | 'auditor' | 'agent' | 'supervisor', csv: string, filename: string) {
   const token = await loginAs(role);
   return request(app)
     .post(path)
     .set('Authorization', `Bearer ${token}`)
+    .set('X-Idempotency-Key', uuid())
     .attach('file', Buffer.from(csv, 'utf8'), filename);
 }
 
@@ -125,6 +127,27 @@ describe('GET /api/students', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
   });
+
+  it('returns 404 when reading a student from another campus scope', async () => {
+    const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+    const outOfScopeStudent = await prisma.student.create({
+      data: {
+        campusId: 'campus-out-of-scope',
+        studentNumber: `S-${suffix}`,
+        fullName: `Out Of Scope ${suffix}`,
+        email: `${suffix}@outscope.test`,
+      },
+      select: { id: true },
+    });
+
+    const token = await loginAs('admin');
+    const res = await request(app)
+      .get(`/api/students/${outOfScopeStudent.id}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('NOT_FOUND');
+  });
 });
 
 describe('POST /api/students', () => {
@@ -145,6 +168,33 @@ describe('POST /api/students', () => {
     });
     expect([200, 201]).toContain(res.status);
     expect(res.body.success).toBe(true);
+
+    const created = await prisma.student.findUnique({
+      where: { studentNumber: sn },
+      select: { campusId: true },
+    });
+
+    expect(created?.campusId).toBe('main-campus');
+  });
+
+  it('returns 404 when updating a student from another campus scope', async () => {
+    const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+    const outOfScopeStudent = await prisma.student.create({
+      data: {
+        campusId: 'campus-out-of-scope',
+        studentNumber: `S-UP-${suffix}`,
+        fullName: `Out Of Scope ${suffix}`,
+        email: `${suffix}-up@outscope.test`,
+      },
+      select: { id: true },
+    });
+
+    const res = await authPut(`/api/students/${outOfScopeStudent.id}`, 'admin', {
+      fullName: 'Updated Name',
+    });
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('NOT_FOUND');
   });
 
   it('returns 403 for auditor', async () => {

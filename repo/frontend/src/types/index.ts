@@ -13,12 +13,13 @@ export interface AuthUser {
   id: string;
   username: string;
   role: UserRole;
+  campusId?: string;
 }
 
 export type ClassroomStatus = 'online' | 'offline' | 'degraded';
 export type AnomalyEventStatus = 'open' | 'acknowledged' | 'assigned' | 'resolved' | 'escalated';
 export type ParkingAlertStatus = 'open' | 'claimed' | 'closed' | 'escalated';
-export type FulfillmentStatus = 'draft' | 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+export type FulfillmentStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
 export type ShipmentStatus = 'pending' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'exception' | 'returned';
 export type AfterSalesTicketType = 'delay' | 'dispute' | 'lost_item';
 export type AfterSalesTicketStatus = 'open' | 'under_review' | 'pending_approval' | 'resolved' | 'closed';

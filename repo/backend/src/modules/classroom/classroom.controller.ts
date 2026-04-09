@@ -16,7 +16,7 @@ export async function getClassroomsHandler(req: Request, res: Response, next: Ne
       activeOnly:   req.query.active !== 'false',
       page:         req.query.page  ? parseInt(req.query.page as string, 10)  : 1,
       limit:        req.query.limit ? parseInt(req.query.limit as string, 10) : 50,
-    });
+    }, req.user);
     res.json({ success: true, ...result });
   } catch (err) {
     next(err);
@@ -25,7 +25,7 @@ export async function getClassroomsHandler(req: Request, res: Response, next: Ne
 
 export async function getClassroomStatsHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const stats = await getClassroomStats();
+    const stats = await getClassroomStats(req.user);
     res.json({ success: true, data: stats });
   } catch (err) {
     next(err);
@@ -34,7 +34,7 @@ export async function getClassroomStatsHandler(req: Request, res: Response, next
 
 export async function getClassroomHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const classroom = await getClassroomById(req.params.id);
+    const classroom = await getClassroomById(req.params.id, req.user);
     if (!classroom) {
       res.status(404).json({ success: false, error: 'Classroom not found', code: 'NOT_FOUND' });
       return;

@@ -3,6 +3,15 @@ import crypto from "crypto";
 import { logger } from "../lib/logger";
 import { decrypt } from "../lib/encryption";
 
+export type IntegrationKeyScope = "classroom" | "parking" | "carrier";
+
+type IntegrationKeyAuthContext = {
+  id: string;
+  keyId: string;
+  scope: string;
+  secret: string;
+};
+
 /**
  * HMAC-SHA256 API signing middleware for privileged integrations
  * (classroom hardware, parking ingest, carrier connectors).
@@ -13,7 +22,10 @@ import { decrypt } from "../lib/encryption";
  *   X-Signature  — HMAC-SHA256(secret, `${method}:${fullPath}:${timestamp}:${body}`)
  */
 export function apiSigning(
-  getSecretByKey: (apiKey: string) => Promise<string | null>,
+  getIntegrationKeyContext: (
+    apiKey: string,
+  ) => Promise<IntegrationKeyAuthContext | null>,
+  requiredScope?: IntegrationKeyScope,
 ) {
   return async (
     req: Request,
@@ -43,12 +55,28 @@ export function apiSigning(
       return;
     }
 
-    const secret = await getSecretByKey(apiKey);
-    if (!secret) {
+    const keyContext = await getIntegrationKeyContext(apiKey);
+    if (!keyContext) {
       res.status(401).json({
         success: false,
         error: "Unknown API key",
         code: "UNKNOWN_API_KEY",
+      });
+      return;
+    }
+
+    if (requiredScope && keyContext.scope !== requiredScope) {
+      logger.warn({
+        msg: "API key scope mismatch",
+        keyId: keyContext.keyId,
+        keyScope: keyContext.scope,
+        requiredScope,
+        path: req.path,
+      });
+      res.status(403).json({
+        success: false,
+        error: "API key scope does not allow this endpoint",
+        code: "API_KEY_SCOPE_MISMATCH",
       });
       return;
     }
@@ -60,7 +88,7 @@ export function apiSigning(
     const signedPath = req.baseUrl ? `${req.baseUrl}${req.path}` : req.path;
     const signaturePayload = `${req.method}:${signedPath}:${timestamp}:${body}`;
     const expected = crypto
-      .createHmac("sha256", secret)
+      .createHmac("sha256", keyContext.secret)
       .update(signaturePayload)
       .digest("hex");
 
@@ -90,9 +118,9 @@ export function apiSigning(
  * Looks up the HMAC secret for a given API key ID from the IntegrationKey table.
  * Used as the getSecretByKey callback for apiSigning middleware.
  */
-export async function getSecretByKeyId(
+export async function getIntegrationKeyContextByKeyId(
   apiKeyId: string,
-): Promise<string | null> {
+): Promise<IntegrationKeyAuthContext | null> {
   try {
     const { prisma } = await import("../lib/prisma");
     const key = await prisma.integrationKey.findUnique({
@@ -116,12 +144,19 @@ export async function getSecretByKeyId(
     prisma.integrationKey
       .update({ where: { id: key.id }, data: { lastUsedAt: new Date() } })
       .catch(() => {});
-    return secret;
+    return {
+      id: key.id,
+      keyId: key.keyId,
+      scope: key.scope,
+      secret,
+    };
   } catch (err) {
     logger.error({ msg: "Failed to lookup integration key", apiKeyId, err });
     return null;
   }
 }
 
-/** Pre-configured API signing middleware using DB-backed key lookup */
-export const privilegedApiSigning = apiSigning(getSecretByKeyId);
+/** Scope-bound API signing middleware for privileged integration endpoints */
+export function privilegedApiSigningForScope(scope: IntegrationKeyScope) {
+  return apiSigning(getIntegrationKeyContextByKeyId, scope);
+}

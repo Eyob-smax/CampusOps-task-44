@@ -29,9 +29,33 @@ interface MockTxn {
   note: string | null;
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function sanitizeReceiptText(value: string, maxLength: number): string {
+  const collapsed = value
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return escapeHtml(collapsed.slice(0, maxLength));
+}
+
 function buildReceiptText(txn: MockTxn): string {
   const amount = decryptAmount(txn.amountEncrypted);
   const balanceAfter = decryptAmount(txn.balanceAfterEncrypted);
+  const safeReferenceType = txn.referenceType
+    ? sanitizeReceiptText(txn.referenceType, 40)
+    : "";
+  const safeReferenceId = txn.referenceId
+    ? sanitizeReceiptText(txn.referenceId, 120)
+    : "";
+  const safeNote = txn.note ? sanitizeReceiptText(txn.note, 500) : "";
 
   const lines = [
     "================================",
@@ -44,11 +68,11 @@ function buildReceiptText(txn: MockTxn): string {
     `Balance After: $${balanceAfter.toFixed(2)}`,
   ];
 
-  if (txn.referenceId) {
-    lines.push(`Reference:     ${txn.referenceType ?? ""} ${txn.referenceId}`);
+  if (safeReferenceId) {
+    lines.push(`Reference:     ${safeReferenceType} ${safeReferenceId}`.trimEnd());
   }
-  if (txn.note) {
-    lines.push(`Note:          ${txn.note}`);
+  if (safeNote) {
+    lines.push(`Note:          ${safeNote}`);
   }
 
   lines.push("================================");
@@ -133,20 +157,22 @@ describe("receipt text formatting", () => {
     expect(receipt).toContain("Balance After: $5.50");
   });
 
-  it("includes reference line when referenceId is set", () => {
+  it("escapes reference fields before rendering", () => {
     const txn: MockTxn = {
       id: "txn-005",
       createdAt: baseDate,
       type: "spend",
       amountEncrypted: encryptAmount(20),
       balanceAfterEncrypted: encryptAmount(80),
-      referenceId: "fr-ref-001",
-      referenceType: "fulfillment",
+      referenceId: "<img src=x onerror=alert(1)>",
+      referenceType: "fulfillment<script>",
       note: null,
     };
     const receipt = buildReceiptText(txn);
-    expect(receipt).toContain("fr-ref-001");
-    expect(receipt).toContain("fulfillment");
+    expect(receipt).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(receipt).toContain("fulfillment&lt;script&gt;");
+    expect(receipt).not.toContain("<img");
+    expect(receipt).not.toContain("<script>");
   });
 
   it("omits reference line when referenceId is null", () => {
@@ -164,7 +190,7 @@ describe("receipt text formatting", () => {
     expect(receipt).not.toContain("Reference:");
   });
 
-  it("includes note line when note is set", () => {
+  it("includes note line when note is set and escapes HTML", () => {
     const txn: MockTxn = {
       id: "txn-007",
       createdAt: baseDate,
@@ -173,10 +199,13 @@ describe("receipt text formatting", () => {
       balanceAfterEncrypted: encryptAmount(200),
       referenceId: null,
       referenceType: null,
-      note: "Admin manual top-up",
+      note: 'Admin <b>manual</b> "top-up"',
     };
     const receipt = buildReceiptText(txn);
-    expect(receipt).toContain("Admin manual top-up");
+    expect(receipt).toContain(
+      "Admin &lt;b&gt;manual&lt;/b&gt; &quot;top-up&quot;",
+    );
+    expect(receipt).not.toContain("<b>");
   });
 
   it("omits note line when note is null", () => {

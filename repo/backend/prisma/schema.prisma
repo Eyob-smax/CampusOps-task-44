@@ -22,6 +22,7 @@ model User {
   username     String   @unique @db.VarChar(80)
   passwordHash String   @db.VarChar(255)
   role         UserRole
+  campusId     String   @default("main-campus") @db.VarChar(36)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -33,7 +34,10 @@ model User {
   claimedAlerts     ParkingAlert[]    @relation("AlertClaimer")
   closedAlerts      ParkingAlert[]    @relation("AlertCloser")
   approvedComps     Compensation[]    @relation("CompApprover")
+  createdFulfillmentRequests FulfillmentRequest[] @relation("FulfillmentCreator")
+  createdAfterSalesTickets   AfterSalesTicket[]   @relation("AfterSalesCreator")
 
+  @@index([campusId])
   @@map("users")
 }
 
@@ -99,6 +103,7 @@ model Department {
 
   courses Course[]
   classes Class[]
+  students Student[]
 
   @@map("departments")
 }
@@ -156,11 +161,13 @@ model Class {
 
 model Student {
   id                   String          @id @default(uuid())
+  campusId             String          @default("main-campus") @db.VarChar(36)
   studentNumber        String          @unique @db.VarChar(30)
   fullName             String          @db.VarChar(200)
   email                String          @unique @db.VarChar(200)
   phone                String?         @db.VarChar(20)
   departmentId         String?
+  department           Department?     @relation(fields: [departmentId], references: [id])
   membershipTierId     String?
   membershipTier       MembershipTier? @relation(fields: [membershipTierId], references: [id])
   growthPoints         Int             @default(0)
@@ -173,6 +180,8 @@ model Student {
   afterSalesTickets    AfterSalesTicket[]
   storedValueTx        StoredValueTransaction[]
 
+  @@index([campusId])
+  @@index([departmentId])
   @@index([membershipTierId])
   @@map("students")
 }
@@ -183,6 +192,7 @@ model Student {
 
 model Classroom {
   id                    String          @id @default(uuid())
+  campusId              String          @default("main-campus") @db.VarChar(36)
   classId               String          @unique
   class                 Class           @relation(fields: [classId], references: [id])
   hardwareNodeId        String          @unique @db.VarChar(100)
@@ -196,6 +206,7 @@ model Classroom {
 
   anomalyEvents AnomalyEvent[]
 
+  @@index([campusId])
   @@map("classrooms")
 }
 
@@ -207,6 +218,7 @@ enum ClassroomStatus {
 
 model AnomalyEvent {
   id               String             @id @default(uuid())
+  campusId         String             @default("main-campus") @db.VarChar(36)
   classroomId      String
   classroom        Classroom          @relation(fields: [classroomId], references: [id])
   type             String             @db.VarChar(80)
@@ -228,6 +240,7 @@ model AnomalyEvent {
   timeline AnomalyTimelineEntry[]
 
   @@index([classroomId])
+  @@index([campusId])
   @@index([status])
   @@index([assignedToId])
   @@index([createdAt])
@@ -260,8 +273,9 @@ enum AnomalyEventStatus {
 // ============================================================
 
 model ParkingLot {
-  id          String @id @default(uuid())
-  name        String @unique @db.VarChar(100)
+  id          String   @id @default(uuid())
+  campusId    String   @default("main-campus") @db.VarChar(36)
+  name        String   @unique @db.VarChar(100)
   totalSpaces Int
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -270,11 +284,13 @@ model ParkingLot {
   sessions ParkingSession[]
   alerts   ParkingAlert[]
 
+  @@index([campusId])
   @@map("parking_lots")
 }
 
 model ParkingSession {
   id          String     @id @default(uuid())
+  campusId    String     @default("main-campus") @db.VarChar(36)
   lotId       String
   lot         ParkingLot @relation(fields: [lotId], references: [id])
   plateNumber String?    @db.VarChar(20)
@@ -283,6 +299,7 @@ model ParkingSession {
   isSettled   Boolean    @default(false)
 
   @@index([lotId])
+  @@index([campusId])
   @@index([plateNumber])
   @@index([entryAt])
   @@map("parking_sessions")
@@ -290,6 +307,7 @@ model ParkingSession {
 
 model ParkingAlert {
   id          String             @id @default(uuid())
+  campusId    String             @default("main-campus") @db.VarChar(36)
   lotId       String
   lot         ParkingLot         @relation(fields: [lotId], references: [id])
   type        ParkingAlertType
@@ -310,6 +328,7 @@ model ParkingAlert {
   timeline      ParkingAlertTimelineEntry[]
 
   @@index([lotId])
+  @@index([campusId])
   @@index([status])
   @@index([createdAt])
   @@map("parking_alerts")
@@ -474,9 +493,12 @@ enum CouponDiscountType {
 
 model FulfillmentRequest {
   id              String            @id @default(uuid())
+  campusId        String            @default("main-campus") @db.VarChar(36)
   studentId       String
   student         Student           @relation(fields: [studentId], references: [id])
-  status          FulfillmentStatus @default(draft)
+  createdById     String?
+  createdBy       User?             @relation("FulfillmentCreator", fields: [createdById], references: [id])
+  status          FulfillmentStatus @default(pending)
   couponId        String?
   coupon          Coupon?           @relation(fields: [couponId], references: [id])
   subtotal        Decimal           @db.Decimal(10, 2)
@@ -494,14 +516,15 @@ model FulfillmentRequest {
   items    FulfillmentItem[]
   shipment Shipment?
 
+  @@index([campusId])
   @@index([studentId])
+  @@index([createdById])
   @@index([status])
   @@index([createdAt])
   @@map("fulfillment_requests")
 }
 
 enum FulfillmentStatus {
-  draft
   pending
   processing
   shipped
@@ -575,6 +598,7 @@ model CompensationRule {
 
 model Shipment {
   id                   String            @id @default(uuid())
+  campusId             String            @default("main-campus") @db.VarChar(36)
   fulfillmentRequestId String            @unique
   fulfillmentRequest   FulfillmentRequest @relation(fields: [fulfillmentRequestId], references: [id])
   warehouseId          String
@@ -591,6 +615,7 @@ model Shipment {
   parcels           Parcel[]
   afterSalesTickets AfterSalesTicket[]
 
+  @@index([campusId])
   @@index([carrierId])
   @@index([status])
   @@index([createdAt])
@@ -629,8 +654,11 @@ model Parcel {
 
 model AfterSalesTicket {
   id            String                 @id @default(uuid())
+  campusId      String                 @default("main-campus") @db.VarChar(36)
   studentId     String
   student       Student                @relation(fields: [studentId], references: [id])
+  createdById   String?
+  createdBy     User?                  @relation("AfterSalesCreator", fields: [createdById], references: [id])
   shipmentId    String?
   shipment      Shipment?              @relation(fields: [shipmentId], references: [id])
   parcelId      String?
@@ -647,7 +675,9 @@ model AfterSalesTicket {
   timeline      TicketTimelineEntry[]
   compensations Compensation[]
 
+  @@index([campusId])
   @@index([studentId])
+  @@index([createdById])
   @@index([shipmentId])
   @@index([parcelId])
   @@index([status])
@@ -789,6 +819,7 @@ model JobRecord {
   processedRows  Int?
   failedRows     Int?
   actorId        String?   @db.VarChar(36)
+  campusId       String    @default("main-campus") @db.VarChar(36)
   idempotencyKey String?   @unique @db.VarChar(36)
   inputFilename  String?   @db.VarChar(500)
   result         String?   @db.Text  // JSON: {created,updated,failed,errorReportPath}
@@ -802,6 +833,7 @@ model JobRecord {
 
   @@index([queueName, status])
   @@index([actorId])
+  @@index([campusId])
   @@index([createdAt])
   @@map("job_records")
 }

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Daily backups run automatically at 02:00 UTC via the `campusops:backup` BullMQ job. Each backup
+Daily backups run automatically at 02:00 UTC via the `campusops-backup` BullMQ job. Each backup
 produces a SQL dump plus a JSON manifest written to the `BACKUP_PATH` directory (default:
 `./backups`). The manifest records row counts for all major Prisma models and is the verification
 artefact paired with the dump.
@@ -81,6 +81,7 @@ Verification checks:
 3. If present, manifest is valid JSON with keys: `id`, `timestamp`, `tables`, `rowCounts`.
 4. `tables` array is non-empty.
 5. `rowCounts` is a plain object.
+6. Restore smoke test imports the dump into a temporary database when restore verification is enabled.
 
 The `BackupRecord.verifyStatus` is updated to `passed` or `failed`.
 
@@ -96,7 +97,7 @@ The `BackupRecord.verifyStatus` is updated to `passed` or `failed`.
 
 ## Retention
 
-Backups older than 14 days are automatically deleted by the `campusops:log-retention` job
-(which also calls `enforceRetention`). Both dump/manifest files and the `BackupRecord` row are removed.
+Backups older than 14 days are automatically deleted by the `campusops-backup` worker
+(which calls `enforceRetention`). Both dump/manifest files and the `BackupRecord` row are removed.
 
 To change the retention period, set `BACKUP_RETENTION_DAYS` or update `config.backup.retentionDays`.

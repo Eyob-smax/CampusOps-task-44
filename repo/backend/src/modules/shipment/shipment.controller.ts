@@ -23,7 +23,7 @@ export async function listShipmentsHandler(req: Request, res: Response, next: Ne
       status,
       page:  page  ? Number(page)  : undefined,
       limit: limit ? Number(limit) : undefined,
-    });
+    }, req.user);
     res.json({ success: true, data });
   } catch (err) {
     next(err);
@@ -32,7 +32,7 @@ export async function listShipmentsHandler(req: Request, res: Response, next: Ne
 
 export async function getShipmentHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const data = await getShipmentById(req.params.id);
+    const data = await getShipmentById(req.params.id, req.user);
     res.json({ success: true, data });
   } catch (err) {
     next(err);
@@ -43,7 +43,7 @@ export async function createShipmentHandler(req: Request, res: Response, next: N
   try {
     const body    = createShipmentSchema.parse(req.body);
     const actorId = (req as any).user?.id ?? 'system';
-    const data = await createShipment(body, actorId);
+    const data = await createShipment(body, actorId, req.user);
     res.status(201).json({ success: true, data });
   } catch (err) {
     next(err);
@@ -54,7 +54,7 @@ export async function updateStatusHandler(req: Request, res: Response, next: Nex
   try {
     const { status } = updateStatusSchema.parse(req.body);
     const actorId    = (req as any).user?.id ?? 'system';
-    const data = await updateShipmentStatus(req.params.id, status, actorId);
+    const data = await updateShipmentStatus(req.params.id, status, actorId, req.user);
     res.json({ success: true, data });
   } catch (err) {
     next(err);

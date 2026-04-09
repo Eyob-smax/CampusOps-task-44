@@ -14,6 +14,10 @@ const {
   assignAnomalySchema,
   resolveAnomalySchema,
   escalateAnomalySchema,
+  canAcknowledgeAnomalyStatus,
+  canAssignAnomalyStatus,
+  canResolveAnomalyStatus,
+  canEscalateAnomalyStatus,
 } = await import('../src/modules/classroom/anomaly.service');
 
 const { heartbeatSchema } = await import('../src/modules/classroom/classroom.service');
@@ -74,23 +78,23 @@ describe('assignAnomalySchema', () => {
   });
 });
 
-// ---- resolveAnomalySchema — critical: 10 char minimum ----
+// ---- resolveAnomalySchema — critical: 20 char minimum ----
 describe('resolveAnomalySchema', () => {
-  it('accepts note of exactly 10 chars', () => {
-    const result = resolveAnomalySchema.safeParse({ resolutionNote: '1234567890' });
+  it('accepts note of exactly 20 chars', () => {
+    const result = resolveAnomalySchema.safeParse({ resolutionNote: '12345678901234567890' });
     expect(result.success).toBe(true);
   });
 
-  it('accepts note longer than 10 chars', () => {
+  it('accepts note longer than 20 chars', () => {
     const result = resolveAnomalySchema.safeParse({ resolutionNote: 'Fixed by restarting the hardware node and verifying connection.' });
     expect(result.success).toBe(true);
   });
 
-  it('rejects note of 9 chars', () => {
-    const result = resolveAnomalySchema.safeParse({ resolutionNote: '123456789' });
+  it('rejects note of 19 chars', () => {
+    const result = resolveAnomalySchema.safeParse({ resolutionNote: '1234567890123456789' });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.errors[0].message).toContain('10');
+      expect(result.error.errors[0].message).toContain('20');
     }
   });
 
@@ -100,13 +104,13 @@ describe('resolveAnomalySchema', () => {
   });
 
   it('trims leading/trailing whitespace before validation', () => {
-    // Trimmed value '         x' (9 visible chars after trim → 1) should fail
-    const result = resolveAnomalySchema.safeParse({ resolutionNote: '         x' });
+    // Trimmed value below threshold should fail.
+    const result = resolveAnomalySchema.safeParse({ resolutionNote: '          too short         ' });
     expect(result.success).toBe(false);
   });
 
-  it('passes when note has 10 non-whitespace chars after trim', () => {
-    const result = resolveAnomalySchema.safeParse({ resolutionNote: '  Node was rebooted  ' });
+  it('passes when note has 20 non-whitespace chars after trim', () => {
+    const result = resolveAnomalySchema.safeParse({ resolutionNote: '  Node restarted and validated  ' });
     expect(result.success).toBe(true);
   });
 });
@@ -149,24 +153,17 @@ describe('heartbeatSchema', () => {
   });
 });
 
-// ---- State transition rules (pure logic, no DB) ----
+// ---- State transition rules ----
 describe('anomaly state transition rules', () => {
-  type Status = 'open' | 'acknowledged' | 'assigned' | 'resolved' | 'escalated';
-
-  function canAcknowledge(status: Status) { return status === 'open'; }
-  function canAssign(status: Status)      { return status === 'acknowledged'; }
-  function canResolve(status: Status)     { return status === 'assigned'; }
-  function canEscalate(status: Status)    { return ['open', 'acknowledged', 'assigned'].includes(status); }
-
-  it('open → acknowledged: valid', () => expect(canAcknowledge('open')).toBe(true));
-  it('acknowledged → acknowledged: invalid', () => expect(canAcknowledge('acknowledged')).toBe(false));
-  it('acknowledged → assigned: valid', () => expect(canAssign('acknowledged')).toBe(true));
-  it('open → assigned: invalid', () => expect(canAssign('open')).toBe(false));
-  it('assigned → resolved: valid', () => expect(canResolve('assigned')).toBe(true));
-  it('acknowledged → resolved: invalid', () => expect(canResolve('acknowledged')).toBe(false));
-  it('open → escalated: valid', () => expect(canEscalate('open')).toBe(true));
-  it('acknowledged → escalated: valid', () => expect(canEscalate('acknowledged')).toBe(true));
-  it('assigned → escalated: valid', () => expect(canEscalate('assigned')).toBe(true));
-  it('resolved → escalated: invalid', () => expect(canEscalate('resolved')).toBe(false));
-  it('escalated → escalated: invalid', () => expect(canEscalate('escalated')).toBe(false));
+  it('open → acknowledged: valid', () => expect(canAcknowledgeAnomalyStatus('open')).toBe(true));
+  it('acknowledged → acknowledged: invalid', () => expect(canAcknowledgeAnomalyStatus('acknowledged')).toBe(false));
+  it('acknowledged → assigned: valid', () => expect(canAssignAnomalyStatus('acknowledged')).toBe(true));
+  it('open → assigned: invalid', () => expect(canAssignAnomalyStatus('open')).toBe(false));
+  it('assigned → resolved: valid', () => expect(canResolveAnomalyStatus('assigned')).toBe(true));
+  it('acknowledged → resolved: invalid', () => expect(canResolveAnomalyStatus('acknowledged')).toBe(false));
+  it('open → escalated: valid', () => expect(canEscalateAnomalyStatus('open')).toBe(true));
+  it('acknowledged → escalated: valid', () => expect(canEscalateAnomalyStatus('acknowledged')).toBe(true));
+  it('assigned → escalated: valid', () => expect(canEscalateAnomalyStatus('assigned')).toBe(true));
+  it('resolved → escalated: invalid', () => expect(canEscalateAnomalyStatus('resolved')).toBe(false));
+  it('escalated → escalated: invalid', () => expect(canEscalateAnomalyStatus('escalated')).toBe(false));
 });

@@ -49,9 +49,10 @@ export async function uploadEvidenceHandler(req: Request, res: Response, next: N
       req.file.mimetype,
       actorId,
       cropRect,
+      req.user,
     );
 
-    res.status(201).json(evidence);
+    res.status(201).json({ success: true, data: evidence });
   } catch (err) {
     next(err);
   }
@@ -68,8 +69,8 @@ export async function addTextNoteHandler(req: Request, res: Response, next: Next
       return;
     }
 
-    const evidence = await addTextEvidence(ticketId, note.trim(), actorId);
-    res.status(201).json(evidence);
+    const evidence = await addTextEvidence(ticketId, note.trim(), actorId, req.user);
+    res.status(201).json({ success: true, data: evidence });
   } catch (err) {
     next(err);
   }

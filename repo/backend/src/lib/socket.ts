@@ -6,6 +6,16 @@ import { logger } from './logger';
 import type { AuthenticatedUser } from '../types';
 
 let io: SocketServer;
+type RealtimeNamespace = '/classroom' | '/parking' | '/supervisor-queue' | '/jobs' | '/alerts';
+
+function campusRoom(campusId: string): string {
+  return `campus:${campusId || 'main-campus'}`;
+}
+
+function joinCampusRoom(socket: Socket): void {
+  const user = (socket as Socket & { user: AuthenticatedUser }).user;
+  socket.join(campusRoom(user.campusId));
+}
 
 export function setupSocket(httpServer: HttpServer): SocketServer {
   io = new SocketServer(httpServer, {
@@ -22,7 +32,13 @@ export function setupSocket(httpServer: HttpServer): SocketServer {
       return next(new Error('Authentication required'));
     }
     try {
-      const user = jwt.verify(token, config.jwt.secret) as AuthenticatedUser;
+      const payload = jwt.verify(token, config.jwt.secret) as AuthenticatedUser & { campusId?: string };
+      const user: AuthenticatedUser = {
+        id: payload.id,
+        username: payload.username,
+        role: payload.role,
+        campusId: payload.campusId ?? 'main-campus',
+      };
       (socket as Socket & { user: AuthenticatedUser }).user = user;
       next();
     } catch {
@@ -39,7 +55,8 @@ export function setupSocket(httpServer: HttpServer): SocketServer {
   classroomNs.use(requireRole(['administrator', 'classroom_supervisor']));
   classroomNs.on('connection', (socket) => {
     const user = (socket as Socket & { user: AuthenticatedUser }).user;
-    logger.info({ msg: 'Socket /classroom connected', userId: user.id });
+    joinCampusRoom(socket);
+    logger.info({ msg: 'Socket /classroom connected', userId: user.id, campusId: user.campusId });
     socket.on('disconnect', () =>
       logger.info({ msg: 'Socket /classroom disconnected', userId: user.id })
     );
@@ -51,7 +68,8 @@ export function setupSocket(httpServer: HttpServer): SocketServer {
   parkingNs.use(requireRole(['administrator', 'operations_manager', 'classroom_supervisor']));
   parkingNs.on('connection', (socket) => {
     const user = (socket as Socket & { user: AuthenticatedUser }).user;
-    logger.info({ msg: 'Socket /parking connected', userId: user.id });
+    joinCampusRoom(socket);
+    logger.info({ msg: 'Socket /parking connected', userId: user.id, campusId: user.campusId });
   });
 
   // Namespace: /supervisor-queue — escalated alert queue
@@ -59,22 +77,28 @@ export function setupSocket(httpServer: HttpServer): SocketServer {
   supervisorNs.use(authenticateSocket);
   supervisorNs.use(requireRole(['administrator', 'classroom_supervisor']));
   supervisorNs.on('connection', (socket) => {
-    logger.info({ msg: 'Socket /supervisor-queue connected' });
+    const user = (socket as Socket & { user: AuthenticatedUser }).user;
+    joinCampusRoom(socket);
+    logger.info({ msg: 'Socket /supervisor-queue connected', userId: user.id, campusId: user.campusId });
   });
 
   // Namespace: /jobs — background job progress
   const jobsNs = io.of('/jobs');
   // All authenticated users can subscribe to job events
   jobsNs.use(authenticateSocket);
-  jobsNs.on('connection', () => {
-    logger.info({ msg: 'Socket /jobs connected' });
+  jobsNs.on('connection', (socket) => {
+    const user = (socket as Socket & { user: AuthenticatedUser }).user;
+    joinCampusRoom(socket);
+    logger.info({ msg: 'Socket /jobs connected', userId: user.id, campusId: user.campusId });
   });
 
   // Namespace: /alerts — threshold breach banners (all authenticated users)
   const alertsNs = io.of('/alerts');
   alertsNs.use(authenticateSocket);
-  alertsNs.on('connection', () => {
-    logger.info({ msg: 'Socket /alerts connected' });
+  alertsNs.on('connection', (socket) => {
+    const user = (socket as Socket & { user: AuthenticatedUser }).user;
+    joinCampusRoom(socket);
+    logger.info({ msg: 'Socket /alerts connected', userId: user.id, campusId: user.campusId });
   });
 
   logger.info({ msg: 'Socket.IO namespaces registered', count: 5 });
@@ -87,12 +111,22 @@ export function getSocketServer(): SocketServer {
 }
 
 export function emitToNamespace(
-  namespace: '/classroom' | '/parking' | '/supervisor-queue' | '/jobs' | '/alerts',
+  namespace: RealtimeNamespace,
   event: string,
   data: unknown
 ): void {
   if (!io) return;
   io.of(namespace).emit(event, data);
+}
+
+export function emitToCampusNamespace(
+  namespace: RealtimeNamespace,
+  campusId: string,
+  event: string,
+  data: unknown,
+): void {
+  if (!io) return;
+  io.of(namespace).to(campusRoom(campusId)).emit(event, data);
 }
 
 // Middleware factory to restrict namespace by role

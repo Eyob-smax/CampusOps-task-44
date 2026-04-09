@@ -37,9 +37,10 @@ Example:
 
 ### Automatic (scheduled)
 
-The BullMQ worker `campusops:backup` runs on the schedule defined in the job
-scheduler (typically daily at 03:00 UTC). It calls `runBackup('system')` and
-then enforces retention.
+The BullMQ queue `campusops-backup` runs on `config.backup.scheduleCron`
+(default: daily at 02:00 UTC) from `backend/src/jobs/index.ts`.
+The worker executes `runBackup('system')`, runs `verifyBackup(...)` with restore
+smoke testing, and then enforces retention.
 
 ### Manual via API
 
@@ -86,8 +87,8 @@ Status values:
 
 VerifyStatus values:
 - `pending` — not yet verified
-- `passed`  — dump + manifest checks passed
-- `failed`  — verification failed (missing/empty dump or malformed manifest)
+- `passed`  — dump + manifest checks passed (and restore smoke test passed when enabled)
+- `failed`  — verification failed (missing/empty dump, malformed manifest, or restore smoke test failure)
 
 ---
 
@@ -110,6 +111,7 @@ The verify step checks:
 3. If manifest exists, it parses as JSON and includes: `id`, `timestamp`, `tables`, `rowCounts`.
 4. `tables` is a non-empty array.
 5. `rowCounts` is an object.
+6. Optional restore smoke test imports the dump into a temporary database and validates the import.
 
 ---
 
@@ -139,5 +141,5 @@ console.log(`Deleted ${deleted} old backups`);
 |---------|--------|
 | `status: "failed"`, errorMsg present | Check disk space; check `BACKUP_PATH` is writable |
 | File missing after backup | Confirm the backup directory is on a persistent volume |
-| Worker never runs | Check BullMQ scheduler in `jobs/schedulers`; check Redis connectivity |
+| Worker never runs | Check repeatable-job registration in `backend/src/jobs/index.ts`; check Redis connectivity |
 | `verifyStatus: "failed"` | Dump/manifest may be missing or malformed; inspect verify `details` and re-run backup |

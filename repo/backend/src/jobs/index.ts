@@ -3,6 +3,10 @@ import { getRedisClient } from "../lib/redis";
 import { logger } from "../lib/logger";
 import { emitToNamespace } from "../lib/socket";
 import { config } from "../config";
+import {
+  getShipmentSyncRepeatEveryMs,
+  getShipmentSyncRetryOptions,
+} from "./shipment-sync-policy";
 
 const connection = { connection: getRedisClient() };
 
@@ -57,11 +61,17 @@ export async function registerJobs(): Promise<void> {
     { repeat: { every: 30_000 }, jobId: "parking-sla-check" },
   );
 
-  // Shipment carrier sync — every 5 minutes
+  const shipmentSyncRetryOptions = getShipmentSyncRetryOptions();
+
+  // Shipment carrier sync — every N minutes (configurable)
   await shipmentSyncQueue.add(
     "shipment-sync",
     {},
-    { repeat: { every: 5 * 60_000 }, jobId: "shipment-sync" },
+    {
+      repeat: { every: getShipmentSyncRepeatEveryMs() },
+      jobId: "shipment-sync",
+      ...shipmentSyncRetryOptions,
+    },
   );
 
   // Daily backup — 02:00 UTC

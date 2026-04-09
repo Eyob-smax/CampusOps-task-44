@@ -3,6 +3,11 @@ import {
   listCourses, getCourseById, createCourse, updateCourse, exportCoursesCsv,
   createCourseSchema, updateCourseSchema,
 } from './course.service';
+import {
+  csvToXlsxBuffer,
+  resolveMasterDataExportFormat,
+  XLSX_CONTENT_TYPE,
+} from './export-format';
 
 export async function getCourses(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -37,9 +42,27 @@ export async function updateCourseHandler(req: Request, res: Response, next: Nex
   } catch (err) { next(err); }
 }
 
-export async function exportCoursesHandler(_req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function exportCoursesHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const format = resolveMasterDataExportFormat(req.query['format']);
+    if (!format) {
+      res.status(400).json({
+        success: false,
+        error: 'format must be one of: csv, xlsx',
+        code: 'INVALID_EXPORT_FORMAT',
+      });
+      return;
+    }
+
     const csv = await exportCoursesCsv();
+    if (format === 'xlsx') {
+      const xlsx = csvToXlsxBuffer(csv);
+      res.setHeader('Content-Type', XLSX_CONTENT_TYPE);
+      res.setHeader('Content-Disposition', `attachment; filename="courses-${Date.now()}.xlsx"`);
+      res.send(xlsx);
+      return;
+    }
+
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="courses-${Date.now()}.csv"`);
     res.send(csv);

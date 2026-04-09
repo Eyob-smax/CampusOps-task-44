@@ -5,6 +5,8 @@ import { writeAuditEntry } from "../admin/audit.service";
 import { emitToNamespace } from "../../lib/socket";
 import { getRedisClient } from "../../lib/redis";
 import { logger } from "../../lib/logger";
+import type { AuthenticatedUser } from "../../types";
+import { getShipmentSyncRetryOptions } from "../../jobs/shipment-sync-policy";
 
 const connection = { connection: getRedisClient() };
 const shipmentSyncQueue = new Queue("campusops-shipment-sync", connection);
@@ -38,13 +40,19 @@ export async function listShipments(params: {
   status?: string;
   page?: number;
   limit?: number;
-}) {
+}, requester?: AuthenticatedUser) {
   const where: any = {};
+  if (requester?.campusId) {
+    where.campusId = requester.campusId;
+  }
   if (params.fulfillmentRequestId)
     where.fulfillmentRequestId = params.fulfillmentRequestId;
   if (params.carrierId) where.carrierId = params.carrierId;
   if (params.warehouseId) where.warehouseId = params.warehouseId;
   if (params.status) where.status = params.status;
+  if (requester?.role === "customer_service_agent") {
+    where.fulfillmentRequest = { createdById: requester.id };
+  }
 
   const page = Math.max(1, params.page ?? 1);
   const limit = Math.min(100, Math.max(1, params.limit ?? 20));
@@ -64,9 +72,17 @@ export async function listShipments(params: {
   return { total, page, limit, items };
 }
 
-export async function getShipmentById(id: string) {
-  const shipment = await prisma.shipment.findUnique({
-    where: { id },
+export async function getShipmentById(id: string, requester?: AuthenticatedUser) {
+  const where: any = { id };
+  if (requester?.campusId) {
+    where.campusId = requester.campusId;
+  }
+  if (requester?.role === "customer_service_agent") {
+    where.fulfillmentRequest = { createdById: requester.id };
+  }
+
+  const shipment = await prisma.shipment.findFirst({
+    where,
     include: {
       carrier: true,
       warehouse: true,
@@ -87,10 +103,14 @@ export async function getShipmentById(id: string) {
 export async function createShipment(
   data: z.infer<typeof createShipmentSchema>,
   actorId: string,
+  requester?: AuthenticatedUser,
 ) {
   // Validate fulfillment request exists
-  const fr = await prisma.fulfillmentRequest.findUnique({
-    where: { id: data.fulfillmentRequestId },
+  const fr = await prisma.fulfillmentRequest.findFirst({
+    where: {
+      id: data.fulfillmentRequestId,
+      ...(requester?.campusId ? { campusId: requester.campusId } : {}),
+    } as any,
   });
   if (!fr) {
     const err: any = new Error("Fulfillment request not found");
@@ -114,6 +134,7 @@ export async function createShipment(
 
   const shipment = await prisma.shipment.create({
     data: {
+      campusId: (fr as any).campusId ?? requester?.campusId ?? 'main-campus',
       fulfillmentRequestId: data.fulfillmentRequestId,
       warehouseId: data.warehouseId,
       carrierId: data.carrierId,
@@ -139,8 +160,9 @@ export async function updateShipmentStatus(
   id: string,
   status: string,
   actorId: string,
+  requester?: AuthenticatedUser,
 ) {
-  const shipment = await getShipmentById(id);
+  const shipment = await getShipmentById(id, requester);
 
   const allowed = VALID_TRANSITIONS[shipment.status] ?? [];
   if (!allowed.includes(status)) {
@@ -202,7 +224,7 @@ export async function triggerCarrierSync(carrierId: string) {
   const job = await shipmentSyncQueue.add(
     "sync-carrier",
     { carrierId },
-    { attempts: 3, backoff: { type: "exponential", delay: 5000 } },
+    getShipmentSyncRetryOptions(),
   );
 
   logger.info({ msg: "Carrier sync job queued", carrierId, jobId: job.id });

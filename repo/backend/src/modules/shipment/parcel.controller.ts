@@ -11,7 +11,7 @@ import {
 export async function listParcelsHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { shipmentId } = req.query as any;
-    const data = await listParcels(shipmentId);
+    const data = await listParcels(shipmentId, req.user);
     res.json({ success: true, data });
   } catch (err) {
     next(err);
@@ -20,7 +20,7 @@ export async function listParcelsHandler(req: Request, res: Response, next: Next
 
 export async function getParcelHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const data = await getParcelById(req.params.id);
+    const data = await getParcelById(req.params.id, req.user);
     res.json({ success: true, data });
   } catch (err) {
     next(err);
@@ -36,7 +36,7 @@ export async function addParcelHandler(req: Request, res: Response, next: NextFu
     }
     const data    = addParcelSchema.parse(rest);
     const actorId = (req as any).user?.id ?? 'system';
-    const created = await addParcel(shipmentId, data, actorId);
+    const created = await addParcel(shipmentId, data, actorId, req.user);
     res.status(201).json({ success: true, data: created });
   } catch (err) {
     next(err);
@@ -47,7 +47,7 @@ export async function updateParcelStatusHandler(req: Request, res: Response, nex
   try {
     const { status } = updateParcelStatusSchema.parse(req.body);
     const actorId    = (req as any).user?.id ?? 'system';
-    const data = await updateParcelStatus(req.params.id, status, actorId);
+    const data = await updateParcelStatus(req.params.id, status, actorId, req.user);
     res.json({ success: true, data });
   } catch (err) {
     next(err);

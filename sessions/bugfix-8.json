@@ -1,0 +1,47 @@
+{
+  "id": "bugfix-8",
+  "title": "Cycle-02 fix-check closure and residual doc consistency cleanup",
+  "severity": "medium",
+  "status": "resolved",
+  "dateFound": "2026-04-08",
+  "dateResolved": "2026-04-08",
+  "affectedFiles": [
+    "docs/design.md",
+    "repo/backend/docs/troubleshooting.md",
+    ".tmp/self_test_reports/cycle-02/audit_report-2-fix_check.md"
+  ],
+  "description": "Completed the cycle-02 post-remediation verification pass by fixing the last stale queue-name documentation references and producing a dedicated fix-check artifact that maps each prior audit-report-2 finding (B1/H1/H2/H3/M1/M2) to current static evidence.",
+  "errors": [
+    {
+      "file": "docs/design.md",
+      "error": "Queue prefix wording still referenced the old colon-style naming.",
+      "cause": "A residual documentation line from earlier queue naming conventions remained after broader remediation updates.",
+      "fix": "Updated Redis/BullMQ queue-prefix wording to the current hyphen-style prefix (`campusops-`)."
+    },
+    {
+      "file": "repo/backend/docs/troubleshooting.md",
+      "error": "Metric alert queue name still used legacy `campusops:metric-alert-check` notation.",
+      "cause": "One troubleshooting step was not updated during the prior documentation synchronization sweep.",
+      "fix": "Replaced the stale queue reference with the current `campusops-metric-alert-check` queue name."
+    },
+    {
+      "file": ".tmp/self_test_reports/cycle-02/audit_report-2-fix_check.md",
+      "error": "No dedicated cycle-02 artifact existed to explicitly confirm whether audit-report-2 findings were closed.",
+      "cause": "Remediation changes were present, but a focused fix-check document had not been produced in the cycle-02 report folder.",
+      "fix": "Created `audit_report-2-fix_check.md` with finding-by-finding status and direct code/doc/test evidence references."
+    }
+  ],
+  "rootCause": "Final consistency and closure reporting steps were partially complete: two legacy queue-name doc references remained and a formal cycle-level fix-check artifact had not yet been written.",
+  "impact": "Without these session fixes, audit closure traceability remained weaker and static review could still surface avoidable documentation inconsistencies.",
+  "validation": {
+    "method": "Static verification in workspace: targeted code/doc checks and markdown legacy-reference scans, plus user-reported `run_tests.sh` success.",
+    "result": "Session-scope fixes verified",
+    "summary": {
+      "auditReport2FixCheckArtifact": "PASS",
+      "markdownLegacyReferenceScanOutsideTmp": "PASS",
+      "residualLegacyHitsOutsideTmp": 0,
+      "runtimeTestsExecutedByAgent": "NO",
+      "userReportedRunTests": "PASS"
+    }
+  }
+}

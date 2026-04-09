@@ -1,0 +1,93 @@
+{
+  "id": "bugfix-6",
+  "title": "Observability contract alignment, threshold normalization, and shipment resilience policy wiring",
+  "severity": "critical",
+  "status": "resolved",
+  "dateFound": "2026-04-08",
+  "dateResolved": "2026-04-08",
+  "affectedFiles": [
+    "repo/backend/src/modules/observability/threshold-operator.ts",
+    "repo/backend/src/modules/observability/threshold.service.ts",
+    "repo/backend/src/modules/admin/settings.controller.ts",
+    "repo/backend/src/modules/admin/settings.service.ts",
+    "repo/backend/src/modules/observability/metrics.service.ts",
+    "repo/backend/src/modules/observability/metrics.routes.ts",
+    "repo/frontend/src/composables/useAlertSocket.ts",
+    "repo/frontend/src/views/admin/SystemSettingsView.vue",
+    "repo/backend/src/jobs/shipment-sync-policy.ts",
+    "repo/backend/src/jobs/index.ts",
+    "repo/backend/src/jobs/workers/shipment-sync.worker.ts",
+    "repo/backend/src/modules/shipment/shipment.service.ts",
+    "repo/backend/src/config/index.ts",
+    "repo/backend/src/lib/circuit-breaker.ts",
+    "repo/backend/database/seeders/seed.ts",
+    "repo/backend/unit_tests/threshold-operator.test.ts",
+    "repo/backend/unit_tests/shipment-sync-policy.test.ts",
+    "repo/backend/unit_tests/realtime-socket.test.ts",
+    "repo/frontend/unit_tests/alert-socket.test.ts",
+    "repo/API_tests/routes/observability.test.ts",
+    "repo/API_tests/routes/idempotency.test.ts",
+    "docs/api-spec.md",
+    "repo/docs/acceptance-checklist.md",
+    "repo/docs/test-plan.md"
+  ],
+  "description": "Resolved this session's remaining acceptance gaps by aligning frontend/backend alert event contracts, normalizing threshold operators across admin and observability APIs, enforcing idempotency on alert acknowledgement, wiring shipment retry/backoff policy from config into scheduler and worker behavior, and synchronizing documentation and tests to the implemented behavior.",
+  "errors": [
+    {
+      "file": "repo/backend/src/modules/observability/metrics.service.ts + repo/frontend/src/composables/useAlertSocket.ts",
+      "error": "Real-time alert contract mismatch between emitted event/payload and frontend listener expectations",
+      "cause": "Backend emitted alert:threshold-breach with metricName while frontend primarily consumed threshold:breach with metric field assumptions.",
+      "fix": "Standardized frontend handling for alert:threshold-breach and preserved backward compatibility with threshold:breach; backend payload now includes metric and canonical operator context."
+    },
+    {
+      "file": "repo/backend/src/modules/observability/threshold.service.ts + repo/backend/src/modules/admin/settings.controller.ts + repo/backend/src/modules/admin/settings.service.ts + repo/frontend/src/views/admin/SystemSettingsView.vue",
+      "error": "Threshold operator drift across admin settings, threshold APIs, and UI",
+      "cause": "Mixed operator representations (gt/lt/gte/lte vs symbolic operators) created inconsistent validation and persistence behavior.",
+      "fix": "Introduced shared operator normalization utility with alias support and applied canonical operator handling across validation, persistence, and UI defaults/options."
+    },
+    {
+      "file": "repo/backend/src/modules/observability/metrics.routes.ts + repo/API_tests/routes/observability.test.ts + repo/API_tests/routes/idempotency.test.ts",
+      "error": "Alert acknowledgement mutation was missing idempotency protection",
+      "cause": "PATCH /api/alerts/:id/acknowledge route did not include idempotency middleware despite being a mutating endpoint.",
+      "fix": "Applied idempotency middleware to alert acknowledgement route and added explicit API test coverage for missing-key enforcement and route inclusion in idempotency matrix."
+    },
+    {
+      "file": "repo/backend/src/jobs/index.ts + repo/backend/src/jobs/workers/shipment-sync.worker.ts + repo/backend/src/jobs/shipment-sync-policy.ts + repo/backend/src/modules/shipment/shipment.service.ts",
+      "error": "Shipment sync retry/backoff policy existed in config but was not wired consistently into queue scheduling and execution",
+      "cause": "Repeat interval and retry behavior were partly hardcoded and not uniformly sourced from shipmentSync config.",
+      "fix": "Added shared shipment sync policy helpers, wired configurable repeat interval, mapped retries to BullMQ attempts, introduced custom backoff strategy, and reused policy in manual carrier-sync trigger."
+    },
+    {
+      "file": "repo/backend/src/config/index.ts + repo/backend/src/lib/circuit-breaker.ts",
+      "error": "Circuit-breaker operational policy and operator-facing alert surfacing drift",
+      "cause": "Breaker timing/window defaults and alerting did not reflect intended resilience policy visibility.",
+      "fix": "Exposed configurable breaker timing/window parameters and emitted system:alert notifications when circuits open and recover."
+    },
+    {
+      "file": "repo/backend/database/seeders/seed.ts + docs/api-spec.md + repo/docs/acceptance-checklist.md + repo/docs/test-plan.md",
+      "error": "Seeded threshold metric names and documentation references were stale relative to current implementation",
+      "cause": "Seed data and docs still referenced outdated metric/operator/event/schedule assumptions.",
+      "fix": "Updated seeded thresholds to collected metric names with canonical operators and synchronized API spec, acceptance checklist, and test-plan wording to implemented contracts."
+    }
+  ],
+  "rootCause": "Cross-module contract drift and partially wired resilience policies: event payloads, operator representations, and retry/breaker behavior diverged between implementation paths, tests, and documentation.",
+  "impact": "Before this fix set, threshold alerts risked inconsistent client behavior, admin/operator threshold updates could be interpreted differently across endpoints, alert acknowledgement lacked replay protection, and shipment resilience behavior was less deterministic against configured retry policy.",
+  "validation": {
+    "method": "Dockerized targeted validation from PowerShell using compose test stack with setup/teardown",
+    "result": "All targeted suites passed for the changed areas",
+    "summary": {
+      "backendUnit": "PASS",
+      "backendTestFiles": 23,
+      "backendTests": 510,
+      "frontendUnit": "PASS",
+      "frontendTestFiles": 1,
+      "frontendTests": 5,
+      "apiObservability": "PASS",
+      "apiObservabilityTests": 43,
+      "apiIdempotency": "PASS",
+      "apiIdempotencyTests": 54,
+      "suitesPassed": 4,
+      "suitesFailed": 0
+    }
+  }
+}

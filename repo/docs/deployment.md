@@ -26,9 +26,18 @@ The application root is the `repo/` directory. All commands in this guide assume
 
 ### 2.2 Secrets
 
-The repository already contains placeholder secret files under `secrets/`, so no pre-run generation step is required for local startup.
+The repository ships template secret files under `repo/secrets/*.example`.
+Create runtime secret files under `repo/runtime-secrets/` before startup:
 
-Rotate these placeholders before any real deployment.
+```bash
+mkdir -p repo/runtime-secrets
+cp repo/secrets/db_password.txt.example repo/runtime-secrets/db_password.txt
+cp repo/secrets/db_root_password.txt.example repo/runtime-secrets/db_root_password.txt
+cp repo/secrets/jwt_secret.txt.example repo/runtime-secrets/jwt_secret.txt
+cp repo/secrets/encryption_key.txt.example repo/runtime-secrets/encryption_key.txt
+```
+
+Rotate all copied placeholder values before any real deployment.
 
 ### 2.3 Start the stack
 
@@ -45,11 +54,12 @@ docker compose up -d
 On first boot:
 
 1. MySQL initializes the `campusops` database and runs `backend/database/init/01-charset.sql`.
-2. The backend waits for MySQL to be healthy, then runs `prisma migrate deploy`.
-3. The seed script (`database/seeders/seed.ts`, compiled to `dist/`) creates seeded user accounts only when non-placeholder `SEED_*_PASSWORD` values are configured.
-4. BullMQ repeatable jobs are registered.
-5. The frontend builds the Vue SPA and serves static assets on an internal container port.
-6. `reverse-proxy` terminates TLS on `:443`, redirects `:80` to HTTPS, and proxies `/`, `/api/*`, `/health`, and `/socket.io/*`.
+2. The backend waits for MySQL to be healthy, then applies Prisma migrations with `prisma migrate deploy` when migration files exist.
+3. If no migrations are present, non-production startup falls back to `prisma db push` (production startup refuses this fallback).
+4. The seed script (`database/seeders/seed.ts`, compiled to `dist/`) creates seeded user accounts only when non-placeholder `SEED_*_PASSWORD` values are configured.
+5. BullMQ repeatable jobs are registered.
+6. The frontend builds the Vue SPA and serves static assets on an internal container port.
+7. `reverse-proxy` terminates TLS on `:443`, redirects `:80` to HTTPS, and proxies `/`, `/api/*`, `/health`, and `/socket.io/*`.
 
 First-boot time is typically 60–120 seconds depending on hardware. Monitor with:
 
@@ -110,7 +120,7 @@ https://192.168.1.50/api    # API
 
 ## 5. Environment Variable Reference
 
-Default backend environment variables are defined in `backend/Dockerfile`. Override at compose runtime only when required.
+Backend defaults are split between `backend/Dockerfile` and `docker-compose.yml`. Override at compose runtime only when required.
 
 | Variable                    | Default                         | Description                                         |
 | --------------------------- | ------------------------------- | --------------------------------------------------- |
@@ -122,6 +132,8 @@ Default backend environment variables are defined in `backend/Dockerfile`. Overr
 | `DB_USER`                   | `campusops`                     | Database user                                       |
 | `REDIS_URL`                 | `redis://redis:6379`            | Redis connection URL                                |
 | `ENFORCE_TLS`               | `true` in production            | Reject non-HTTPS requests (except `/health`)        |
+| `CORS_ALLOWED_ORIGINS`      | `https://localhost,https://127.0.0.1,https://localhost:443,https://127.0.0.1:443` | Comma-separated CORS allowlist |
+| `CORS_ALLOW_REQUESTS_WITHOUT_ORIGIN` | `true`                  | Allow non-browser clients with no `Origin` header   |
 | `AUTH_REDIS_FAIL_OPEN`      | `false` in production           | Auth revocation lookup behavior on Redis failure    |
 | `IDEMPOTENCY_REDIS_FAIL_OPEN` | `false` in production         | Idempotency behavior on Redis failure               |
 | `CARRIER_SYNC_MODE`         | `connector` in production       | Carrier sync mode: `connector` or `simulation`      |
@@ -130,14 +142,17 @@ Default backend environment variables are defined in `backend/Dockerfile`. Overr
 | `STORAGE_PATH`              | `/data/storage`                 | Evidence file storage path inside the container     |
 | `LOG_PATH`                  | `/logs`                         | Log file directory inside the container             |
 | `BACKUP_PATH`               | `/backups`                      | Backup manifest directory inside the container      |
+| `BACKUP_RETENTION_DAYS`     | `14`                            | Backup retention window in days                     |
+| `BACKUP_SCHEDULE_CRON`      | `0 2 * * *`                     | Daily backup schedule cron expression (UTC)         |
 | `TZ`                        | `America/New_York`              | Timezone for cron job scheduling and log timestamps |
-| `SEED_ADMIN_PASSWORD`       | `CHANGE_ME_ADMIN_PASSWORD`      | Seeded administrator password                       |
-| `SEED_OPS_MANAGER_PASSWORD` | `CHANGE_ME_OPS_PASSWORD`        | Seeded operations manager password                  |
-| `SEED_SUPERVISOR_PASSWORD`  | `CHANGE_ME_SUPERVISOR_PASSWORD` | Seeded classroom supervisor password                |
-| `SEED_CS_AGENT_PASSWORD`    | `CHANGE_ME_CS_PASSWORD`         | Seeded customer service agent password              |
-| `SEED_AUDITOR_PASSWORD`     | `CHANGE_ME_AUDITOR_PASSWORD`    | Seeded auditor password                             |
+| `SEED_ADMIN_PASSWORD`       | Placeholder rejected outside test mode | Seeded administrator password               |
+| `SEED_OPS_MANAGER_PASSWORD` | Placeholder rejected outside test mode | Seeded operations manager password          |
+| `SEED_SUPERVISOR_PASSWORD`  | Placeholder rejected outside test mode | Seeded classroom supervisor password        |
+| `SEED_CS_AGENT_PASSWORD`    | Placeholder rejected outside test mode | Seeded customer service agent password      |
+| `SEED_AUDITOR_PASSWORD`     | Placeholder rejected outside test mode | Seeded auditor password                     |
 
-Secrets (encryption key, DB password, JWT secret) are injected via Docker secrets at `/run/secrets/` — not environment variables.
+Secrets (encryption key, DB passwords, JWT secret) are injected via Docker secrets at `/run/secrets/` — not environment variables.
+Outside test mode, backend startup fails closed if any secret or seeded password still uses placeholder/insecure default values.
 
 ---
 
@@ -177,7 +192,7 @@ The backup system runs automatically. Key configuration points:
 
 | Setting          | Value                      | How to change                                                 |
 | ---------------- | -------------------------- | ------------------------------------------------------------- |
-| Backup schedule  | Daily 02:00 UTC            | Update cron in `backend/src/jobs/schedulers/` and rebuild     |
+| Backup schedule  | Daily 02:00 UTC            | Set `BACKUP_SCHEDULE_CRON` or update `config.backup.scheduleCron` |
 | Retention period | 14 days                    | Set `BACKUP_RETENTION_DAYS` env var in `docker-compose.yml`   |
 | Backup path      | `/backups` (Docker volume) | Set `BACKUP_PATH` env var                                     |
 | Log retention    | 30 days                    | Hardcoded in `log.service.ts`; requires code change to modify |
@@ -239,7 +254,7 @@ See `docs/backup.md` for the full backup operations reference.
    docker compose up -d
    ```
 
-7. **Verify migrations ran:** The backend runs `prisma migrate deploy` on every startup. Check logs:
+7. **Verify schema setup ran:** confirm migration deployment (or non-production fallback) from backend logs:
 
    ```bash
    docker compose logs backend | grep -i migration
@@ -248,7 +263,21 @@ See `docs/backup.md` for the full backup operations reference.
 8. **Run the test suite** to confirm no regressions:
 
    ```bash
-   bash run_tests.sh
+   ./run_tests.sh
+   ```
+
+   PowerShell fallback (no `sh` required):
+
+   ```powershell
+   $project = "campusops-test-ps-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
+   $env:TEST_PROJECT_NAME = $project
+   $compose = "docker compose -p $project -f docker-compose.yml -f docker-compose.test.yml"
+   Invoke-Expression "$compose down -v --remove-orphans"
+   Invoke-Expression "$compose run --rm --build --no-deps frontend-test-runner"
+   Invoke-Expression "$compose up -d --build --wait db redis"
+   Invoke-Expression "$compose run --rm --build --no-deps backend-unit-test-runner"
+   Invoke-Expression "$compose run --rm --build --no-deps api-test-runner"
+   Invoke-Expression "$compose down -v --remove-orphans"
    ```
 
 9. **Verify the health endpoint:**

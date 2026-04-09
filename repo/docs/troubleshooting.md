@@ -38,14 +38,14 @@ docker compose restart redis
    restarting ensures clean state):
 
 ```bash
-pm2 restart campusops-api
+docker compose restart backend
 ```
 
 3. Check for any stalled jobs after reconnect:
 
 ```bash
-redis-cli LLEN "bull:campusops:backup:stalled"
-redis-cli LLEN "bull:campusops:metric-alert-check:stalled"
+redis-cli LLEN "bull:campusops-backup:stalled"
+redis-cli LLEN "bull:campusops-metric-alert-check:stalled"
 ```
 
 ---
@@ -96,7 +96,7 @@ systemctl restart mysql
 5. Restart the backend after DB recovery:
 
 ```bash
-pm2 restart campusops-api
+docker compose restart backend
 ```
 
 ---
@@ -176,8 +176,8 @@ GET /api/metrics
 Check BullMQ queue depths:
 
 ```bash
-redis-cli LLEN "bull:campusops:backup:active"
-redis-cli LLEN "bull:campusops:metric-alert-check:active"
+redis-cli LLEN "bull:campusops-backup:active"
+redis-cli LLEN "bull:campusops-metric-alert-check:active"
 ```
 
 ### Resolution
@@ -185,7 +185,7 @@ redis-cli LLEN "bull:campusops:metric-alert-check:active"
 1. If a runaway worker is consuming CPU, restart it:
 
 ```bash
-pm2 restart campusops-workers
+docker compose restart backend
 ```
 
 2. If a database query is causing load, check slow query log:
@@ -200,7 +200,7 @@ SHOW PROCESSLIST;
 4. Acknowledge the alert after investigation:
 
 ```
-PATCH /api/alerts/:alertHistoryId/acknowledge
+PATCH /api/alerts/:id/acknowledge
 ```
 
 ---
@@ -216,15 +216,15 @@ PATCH /api/alerts/:alertHistoryId/acknowledge
 
 ```bash
 # Check stalled jobs count
-redis-cli LLEN "bull:campusops:backup:stalled"
-redis-cli LLEN "bull:campusops:metric-alert-check:stalled"
-redis-cli LLEN "bull:campusops:log-retention:stalled"
+redis-cli LLEN "bull:campusops-backup:stalled"
+redis-cli LLEN "bull:campusops-metric-alert-check:stalled"
+redis-cli LLEN "bull:campusops-log-retention:stalled"
 ```
 
 Check which worker processes are running:
 
 ```bash
-pm2 list
+docker compose ps backend
 ```
 
 ### Resolution
@@ -233,14 +233,14 @@ pm2 list
    Restart the worker process:
 
 ```bash
-pm2 restart campusops-workers
+docker compose restart backend
 ```
 
 2. If jobs continue to stall, increase the `lockDuration` in the Worker
    options for long-running jobs (e.g., the backup worker):
 
 ```typescript
-new Worker('campusops:backup', handler, {
+new Worker('campusops-backup', handler, {
   connection: getRedisClient(),
   lockDuration: 120000, // 2 minutes
 });
@@ -250,13 +250,13 @@ new Worker('campusops:backup', handler, {
    loop. Review logs:
 
 ```bash
-pm2 logs campusops-workers --lines 100
+docker compose logs backend --tail 100
 ```
 
 4. If a specific job is permanently stuck, remove it manually:
 
 ```bash
-redis-cli DEL "bull:campusops:backup:<jobId>"
+redis-cli DEL "bull:campusops-backup:<jobId>"
 ```
 
 ---
@@ -264,7 +264,7 @@ redis-cli DEL "bull:campusops:backup:<jobId>"
 ## General health check
 
 ```
-GET /api/health
+GET /health
 ```
 
 This endpoint returns database connectivity, Redis connectivity, and uptime.

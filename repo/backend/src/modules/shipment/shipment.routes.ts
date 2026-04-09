@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticate, requirePermission } from '../../middleware/auth.middleware';
 import { idempotency } from '../../middleware/idempotency.middleware';
-import { privilegedApiSigning } from '../../middleware/api-signing.middleware';
+import { privilegedApiSigningForScope } from '../../middleware/api-signing.middleware';
 import {
   listShipmentsHandler,
   getShipmentHandler,
@@ -53,7 +53,7 @@ router.post(
 // API-signed carrier sync endpoint for on-prem connectors
 router.post(
   '/sync-signed/:carrierId',
-  privilegedApiSigning,
+  privilegedApiSigningForScope('carrier'),
   triggerSyncHandler,
 );
 

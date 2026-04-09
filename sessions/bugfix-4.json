@@ -1,0 +1,59 @@
+{
+  "id": "bugfix-4",
+  "title": "Test runner instability and cross-shell execution gaps (PowerShell + Docker)",
+  "severity": "high",
+  "status": "resolved",
+  "dateFound": "2026-04-07",
+  "dateResolved": "2026-04-07",
+  "affectedFiles": [
+    "repo/frontend/unit_tests/token-lifecycle.test.ts",
+    "repo/run_tests.sh",
+    "repo/docker-compose.test.yml",
+    "repo/README.md",
+    "repo/docs/test-plan.md",
+    "repo/docs/deployment.md",
+    "repo/docs/acceptance-checklist.md",
+    "docs/design.md"
+  ],
+  "description": "Three recurring failures were observed in the Dockerized test flow: dependency prep (db + redis) failing intermittently, API functional tests failing with Prisma P1001 (db unreachable), and shell-specific test execution friction when `sh` was unavailable in PowerShell sessions.",
+  "errors": [
+    {
+      "file": "repo/frontend/unit_tests/token-lifecycle.test.ts",
+      "error": "refresh scheduling test asserted cookie-sentinel payload `{}` but runtime used in-memory refresh token payload after login",
+      "cause": "After login, cookie mode still has an in-memory refresh token (`rt-1`), so scheduled refresh sends `{ refreshToken: \"rt-1\" }`, not `{}`. The old assertion was too broad and did not isolate refresh calls.",
+      "fix": "Updated the test to filter `/api/auth/refresh` calls and assert exactly one refresh call with `{ refreshToken: \"rt-1\" }`."
+    },
+    {
+      "file": "repo/docker-compose.test.yml",
+      "error": "db/redis test volumes collided across compose projects, causing MySQL lock failures (`Unable to lock ./ibdata1`) and failing health checks",
+      "cause": "Static volume names (`campusops-test-db-data`, `campusops-test-redis-data`, etc.) were shared by multiple compose project contexts, so old containers/metadata could keep files locked.",
+      "fix": "Parameterized test volume names with `${TEST_PROJECT_NAME:-campusops-test}-...` so test stacks can use isolated volume namespaces."
+    },
+    {
+      "file": "repo/run_tests.sh",
+      "error": "test-runner could still reuse conflicting test-volume namespace when project metadata was stale",
+      "cause": "A fixed test namespace increased the chance of inheriting stale state from prior runs in mixed shell/compose contexts.",
+      "fix": "Set `TEST_PROJECT_NAME` to a unique per-run value (`${PROJECT_NAME}-${RANDOM}`) before compose execution, preventing cross-run volume lock conflicts."
+    },
+    {
+      "file": "repo/README.md and repo/docs/*",
+      "error": "docs were stale relative to the latest fixes and shell behavior",
+      "cause": "Documentation still assumed `bash run_tests.sh` universally and referenced outdated migration wording in deployment docs.",
+      "fix": "Updated docs to use `./run_tests.sh`, added PowerShell Docker fallback commands, documented per-run test-volume isolation behavior, aligned deployment wording to current `prisma db push --accept-data-loss`, and corrected stale task path wording in top-level design docs."
+    }
+  ],
+  "rootCause": "Two combined issues: (1) assertion drift vs actual auth refresh behavior in frontend tests, and (2) non-isolated Docker test volumes causing intermittent database lock/health failures that cascaded into API test connectivity errors; plus shell-specific command assumptions in docs.",
+  "impact": "Intermittent or repeated red CI-style test summaries despite valid code, with false failure signals for db dependency prep and API suites; operator friction when running tests from PowerShell-only terminals.",
+  "validation": {
+    "method": "Dockerized test execution from PowerShell (no sh dependency)",
+    "result": "All suites passed in one consolidated run",
+    "summary": {
+      "frontendUnit": "PASS",
+      "prepareDependencies": "PASS",
+      "backendUnit": "PASS",
+      "apiFunctional": "PASS",
+      "suitesPassed": 4,
+      "suitesFailed": 0
+    }
+  }
+}

@@ -20,12 +20,18 @@ export function connectAlertSocket(
   socket.on("connect", () => console.debug("[alerts-socket] connected"));
   socket.on("disconnect", () => console.debug("[alerts-socket] disconnected"));
 
-  socket.on(
-    "threshold:breach",
-    (data: { message: string; metric: string; value: number }) => {
-      onAlert(`Alert: ${data.message} (${data.metric}=${data.value})`);
-    },
-  );
+  const onThresholdBreach = (data: {
+    message: string;
+    metric?: string;
+    metricName?: string;
+    value: number;
+  }) => {
+    const metric = data.metric ?? data.metricName ?? "metric";
+    onAlert(`Alert: ${data.message} (${metric}=${data.value})`);
+  };
+
+  socket.on("alert:threshold-breach", onThresholdBreach);
+  socket.on("threshold:breach", onThresholdBreach);
 
   socket.on("system:alert", (data: { message: string }) => {
     onAlert(data.message);

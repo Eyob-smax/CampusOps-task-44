@@ -4,6 +4,7 @@ import {
   requirePermission,
   denyAuditorWrites,
 } from "../../middleware/auth.middleware";
+import { idempotency } from "../../middleware/idempotency.middleware";
 import {
   getClasses,
   getClass,
@@ -30,11 +31,22 @@ router.get(
 router.post(
   "/import",
   requirePermission("master-data:write"),
+  idempotency,
   uploadMasterDataImportFile,
   importClassesHandler,
 );
 router.get("/:id", requirePermission("master-data:read"), getClass);
-router.post("/", requirePermission("master-data:write"), createClassHandler);
-router.put("/:id", requirePermission("master-data:write"), updateClassHandler);
+router.post(
+  "/",
+  requirePermission("master-data:write"),
+  idempotency,
+  createClassHandler,
+);
+router.put(
+  "/:id",
+  requirePermission("master-data:write"),
+  idempotency,
+  updateClassHandler,
+);
 
 export default router;

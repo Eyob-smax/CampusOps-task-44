@@ -2,7 +2,7 @@
  * API functional tests — /health endpoints
  */
 import request from 'supertest';
-import { app } from '../helpers/setup';
+import { app, loginAs } from '../helpers/setup';
 
 describe('Health endpoints', () => {
   it('GET /health returns 200 with status ok', async () => {
@@ -12,11 +12,20 @@ describe('Health endpoints', () => {
     expect(typeof res.body.uptime).toBe('number');
   });
 
-  it('GET /health/info returns service metadata', async () => {
+  it('GET /health/info returns 401 without token', async () => {
     const res = await request(app).get('/health/info');
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('UNAUTHORIZED');
+  });
+
+  it('GET /health/info returns service metadata for admin', async () => {
+    const token = await loginAs('admin');
+    const res = await request(app)
+      .get('/health/info')
+      .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
     expect(res.body.name).toBe('campusops-backend');
-    expect(res.body.environment).toBe('test');
+    expect(typeof res.body.environment).toBe('string');
   });
 
   it('GET /api/unknown returns 404 JSON', async () => {

@@ -2,6 +2,7 @@ import { Worker } from "bullmq";
 import { getRedisClient } from "../../lib/redis";
 import { logger } from "../../lib/logger";
 import { escalateSlaBreaches } from "../../modules/parking/alert.service";
+import { runParkingExceptionDetectors } from "../../modules/parking/parking.service";
 
 const connection = { connection: getRedisClient() };
 
@@ -13,14 +14,28 @@ export const parkingEscalationWorker = new Worker(
   "campusops-parking-sla-check",
   async (job) => {
     logger.debug({ msg: "Parking SLA check started", jobId: job.id });
-    const escalated = await escalateSlaBreaches();
+    const [escalated, detected] = await Promise.all([
+      escalateSlaBreaches(),
+      runParkingExceptionDetectors(),
+    ]);
+
     if (escalated > 0) {
       logger.warn({
         msg: "Parking alerts auto-escalated (SLA breach)",
         count: escalated,
       });
     }
-    return { escalated };
+
+    const detectedTotal =
+      detected.overtime +
+      detected.unsettledSession +
+      detected.duplicatePlate +
+      detected.inconsistentEntryExit;
+    if (detectedTotal > 0) {
+      logger.warn({ msg: "Parking exception detectors created alerts", detected });
+    }
+
+    return { escalated, detected };
   },
   connection,
 );

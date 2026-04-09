@@ -52,6 +52,14 @@ function buildRouter() {
             meta: { title: "Fulfillment" },
           },
           {
+            path: "membership/stored-value",
+            component: DummyComponent,
+            meta: {
+              title: "Stored Value",
+              roles: ["administrator", "operations_manager"],
+            },
+          },
+          {
             path: "admin/users",
             component: DummyComponent,
             meta: { title: "User Management", roles: ["administrator"] },
@@ -180,6 +188,15 @@ describe("Router Guards", () => {
       expect(router.currentRoute.value.path).toBe("/warehouses");
     });
 
+    it("operations_manager can access stored-value", async () => {
+      const store = useAuthStore();
+      store.user = makeUser("operations_manager");
+      store.accessToken = "tok";
+
+      await navigate("/membership/stored-value");
+      expect(router.currentRoute.value.path).toBe("/membership/stored-value");
+    });
+
     it("auditor can access audit-log", async () => {
       const store = useAuthStore();
       store.user = makeUser("auditor");
@@ -213,6 +230,15 @@ describe("Router Guards", () => {
       store.accessToken = "tok";
 
       await navigate("/classroom");
+      expect(router.currentRoute.value.path).toBe("/dashboard");
+    });
+
+    it("customer_service_agent cannot access stored-value", async () => {
+      const store = useAuthStore();
+      store.user = makeUser("customer_service_agent");
+      store.accessToken = "tok";
+
+      await navigate("/membership/stored-value");
       expect(router.currentRoute.value.path).toBe("/dashboard");
     });
   });

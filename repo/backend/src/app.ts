@@ -12,6 +12,9 @@ import { config } from "./config";
 export function createApp(): Application {
   const app = express();
   app.set("trust proxy", 1);
+  const allowedCorsOrigins = new Set(
+    config.cors.allowedOrigins.map((origin) => origin.replace(/\/+$/, "")),
+  );
 
   // ---- Security headers ----
   app.use(
@@ -28,10 +31,18 @@ export function createApp(): Application {
     }),
   );
 
-  // ---- CORS — allow all origins on closed LAN deployments ----
+  // ---- CORS ----
   app.use(
     cors({
-      origin: true,
+      origin: (origin, callback) => {
+        if (!origin) {
+          callback(null, config.cors.allowRequestsWithoutOrigin);
+          return;
+        }
+
+        const normalizedOrigin = origin.replace(/\/+$/, "");
+        callback(null, allowedCorsOrigins.has(normalizedOrigin));
+      },
       credentials: true,
     }),
   );

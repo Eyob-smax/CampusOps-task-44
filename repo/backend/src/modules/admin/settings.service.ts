@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma';
 import { writeAuditEntry } from './audit.service';
+import { normalizeThresholdOperator } from '../observability/threshold-operator';
 
 export async function getAllSettings(): Promise<Record<string, string>> {
   const rows = await prisma.systemSetting.findMany();
@@ -36,13 +37,24 @@ export async function upsertAlertThreshold(
   isActive: boolean,
   actorId: string
 ) {
+  const normalizedOperator = normalizeThresholdOperator(operator);
+  if (!normalizedOperator) {
+    const err: any = new Error('Invalid threshold operator');
+    err.status = 422;
+    err.code = 'VALIDATION_ERROR';
+    throw err;
+  }
+
   const threshold = await prisma.alertThreshold.upsert({
     where: { metricName },
-    update: { operator, value, isActive },
-    create: { metricName, operator, value, isActive },
+    update: { operator: normalizedOperator, value, isActive },
+    create: { metricName, operator: normalizedOperator, value, isActive },
   });
   await writeAuditEntry(actorId, 'alert-threshold:updated', 'alert_threshold', threshold.id, {
-    metricName, operator, value, isActive,
+    metricName,
+    operator: normalizedOperator,
+    value,
+    isActive,
   });
   return threshold;
 }

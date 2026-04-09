@@ -8,6 +8,7 @@ import {
   createTicketSchema,
   updateTicketStatusSchema,
 } from './after-sales.service';
+import { serializeStudentInRecord, serializeStudentInRecords } from '../../lib/student-serialization';
 
 export async function listTicketsHandler(req: Request, res: Response, next: NextFunction) {
   try {
@@ -18,15 +19,18 @@ export async function listTicketsHandler(req: Request, res: Response, next: Next
       status,
       page:  page  ? Number(page)  : undefined,
       limit: limit ? Number(limit) : undefined,
-    });
+    }, req.user);
 
     // Append SLA status to each ticket
-    const items = result.items.map(t => ({
-      ...t,
-      slaStatus: computeSlaStatus(t),
-    }));
+    const items = serializeStudentInRecords(
+      result.items.map((t) => ({
+        ...t,
+        slaStatus: computeSlaStatus(t),
+      })) as Array<Record<string, unknown>>,
+      req.user?.role,
+    );
 
-    res.json({ ...result, items });
+    res.json({ success: true, data: { ...result, items } });
   } catch (err) {
     next(err);
   }
@@ -34,8 +38,15 @@ export async function listTicketsHandler(req: Request, res: Response, next: Next
 
 export async function getTicketHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const ticket = await getTicketById(req.params.id);
-    res.json({ ...ticket, slaStatus: computeSlaStatus(ticket) });
+    const ticket = await getTicketById(req.params.id, req.user);
+    const payload = serializeStudentInRecord(
+      { ...ticket, slaStatus: computeSlaStatus(ticket) } as Record<string, unknown>,
+      req.user?.role,
+    );
+    res.json({
+      success: true,
+      data: payload,
+    });
   } catch (err) {
     next(err);
   }
@@ -45,7 +56,11 @@ export async function createTicketHandler(req: Request, res: Response, next: Nex
   try {
     const body    = createTicketSchema.parse(req.body);
     const actorId = (req as any).user?.id ?? 'system';
-    res.status(201).json(await createTicket(body, actorId));
+    const ticket = await createTicket(body, actorId, req.user);
+    res.status(201).json({
+      success: true,
+      data: serializeStudentInRecord(ticket as Record<string, unknown>, req.user?.role),
+    });
   } catch (err) {
     next(err);
   }
@@ -55,7 +70,17 @@ export async function updateTicketStatusHandler(req: Request, res: Response, nex
   try {
     const { status, note } = updateTicketStatusSchema.parse(req.body);
     const actorId          = (req as any).user?.id ?? 'system';
-    res.json(await updateTicketStatus(req.params.id, status, actorId, note));
+    const ticket = await updateTicketStatus(
+      req.params.id,
+      status,
+      actorId,
+      req.user,
+      note,
+    );
+    res.json({
+      success: true,
+      data: serializeStudentInRecord(ticket as Record<string, unknown>, req.user?.role),
+    });
   } catch (err) {
     next(err);
   }

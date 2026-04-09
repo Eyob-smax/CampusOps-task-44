@@ -123,7 +123,7 @@ This document captures every significant ambiguity found in the original prompt 
 
 **Assumption:**
 - The backup flow writes a SQL dump file plus a JSON manifest to the mounted backup disk (`/backups`).
-- If `mysqldump` is unavailable in the runtime image, the SQL file is still created as a placeholder and the manifest is still generated so operators retain an auditable checkpoint.
+- If `mysqldump` is unavailable in the runtime image, the backup is recorded as manifest-only/failed and the JSON manifest captures the dump failure details for operators.
 - 14-day retention is enforced by the cleanup job, which deletes old dump/manifest file pairs and corresponding `BackupRecord` rows.
 - Verification is an explicit operational action (`POST /api/backups/:id/verify`) that validates dump presence/non-empty size and manifest shape (`id`, `timestamp`, `tables`, `rowCounts`), then records `verifyStatus`.
 - Full restore instructions are documented in `repo/docs/restore.md`; deployment entry points and runtime topology remain in `repo/docs/deployment.md` as source of truth.
@@ -132,11 +132,11 @@ This document captures every significant ambiguity found in the original prompt 
 
 ## 10. Additional Implementation Decisions
 
-- **Idempotency keys:** All POST/PUT endpoints that create or modify financial or fulfillment records require an `X-Idempotency-Key` header (UUIDv4). Duplicate keys within 24 hours return the cached response without re-processing.
-- **LAN transport:** The default deployment is HTTP-only on host ports `80` (frontend) and `6006` (backend API/Socket.IO).
+- **Idempotency keys:** Mutating endpoints that create or transition business state require an `X-Idempotency-Key` header (UUIDv4). Replay cache keys are namespaced by method + path + canonical body hash + key to prevent cross-endpoint/body collisions.
+- **LAN transport:** The default deployment is TLS-first via reverse-proxy (`443`); host port `80` is redirect-only.
 - **Rate limiting:** 100 requests/minute per IP on public-facing routes; 20 requests/minute on auth endpoints. Implemented via `express-rate-limit` backed by Redis.
 - **Audit log encryption:** Audit log entries are AES-256-GCM encrypted before storage. The decryption key is stored in a Docker secret, not in application code.
-- **Image perceptual hash:** Uses `blockhash-js` or equivalent. Hamming distance threshold of 10 is used to flag probable duplicates. Uploaders are warned but not blocked; Administrators can review and delete duplicates.
+- **Image perceptual hash:** Uses average-hash dedup with configurable Hamming threshold (default <=10) and blocks duplicates with HTTP 409.
 - **Growth points:** 1 point per $1.00 spent (after discounts). Tier thresholds are configurable. Points do not expire unless explicitly configured by an Administrator.
 
 ---
@@ -145,7 +145,7 @@ This document captures every significant ambiguity found in the original prompt 
 
 **Ambiguity:** How similar must two images be to count as duplicates? The original design referenced a Hamming distance threshold of 10 and said uploaders are "warned but not blocked."
 
-**Decision:** Perceptual aHash (8x8 grayscale average hash, producing a 64-bit fingerprint). Hamming distance <= 5 bits out of 64 is treated as a duplicate and the upload is **blocked** with HTTP 409. This is stricter than the originally documented threshold of 10 bits, and the behavior changed from warn-only to hard block. Administrators cannot override duplicate uploads; the same evidence image must not be stored twice.
+**Decision:** Perceptual aHash (8x8 grayscale average hash, producing a 64-bit fingerprint). Hamming distance <= 10 bits out of 64 (default, configurable) is treated as a duplicate and the upload is **blocked** with HTTP 409. Administrators cannot override duplicate uploads; the same evidence image must not be stored twice.
 
 ---
 
@@ -153,7 +153,13 @@ This document captures every significant ambiguity found in the original prompt 
 
 **Ambiguity:** The original design described external REST calls to on-prem carrier systems via a `CarrierConnector` interface with circuit breakers and retry policy. How are these implemented without any network access in the LAN-only build?
 
-**Decision:** Carrier sync uses a pure internal simulation function `simulateCarrierResponse` that generates deterministic status transitions based on parcel age:
+**Decision:** Carrier sync supports connector and simulation modes:
+
+- `connector` mode calls on-prem carrier endpoints using configured `connectorUrl` and encrypted API key.
+- `simulation` mode uses deterministic `simulateCarrierResponse` transitions for offline/test contexts.
+- `CARRIER_SYNC_ALLOW_SIMULATION_FALLBACK` controls fallback behavior when connector mode fails.
+
+Simulation status transitions:
 
 | Parcel age | Status assigned |
 |---|---|
@@ -162,7 +168,7 @@ This document captures every significant ambiguity found in the original prompt 
 | >= 6 hours | `out_for_delivery` |
 | >= 24 hours | `delivered` |
 
-No network calls are made. The `CarrierConnector` interface is fulfilled by this simulation. The original retry policy and circuit breaker design (Q7) are superseded by this approach. The shipment sync queue (`campusops:shipment-sync`) runs every 5 minutes instead of the originally specified 15 minutes per carrier.
+The shipment sync worker still applies retry policy and circuit-breaker protections when connector calls are active.
 
 ---
 
@@ -181,9 +187,9 @@ No network calls are made. The `CarrierConnector` interface is fulfilled by this
 
 ## 14. TLS / HTTPS
 
-**Ambiguity:** Early designs (Q10) referenced an Nginx container with TLS termination, self-signed certificate generation via `scripts/gen-certs.sh`, and HTTP-to-HTTPS redirect on port 80. The nginx container was later removed.
+**Ambiguity:** Early designs (Q10) oscillated between direct HTTP exposure and TLS-terminated ingress.
 
-**Decision:** The stack is HTTP-only by default. Frontend is exposed on host port `80` and backend API/Socket.IO on host port `6006`. No dedicated proxy container is required for baseline LAN deployment.
+**Decision:** The stack uses dedicated reverse-proxy TLS ingress. Port `443` serves frontend/API/socket traffic and port `80` redirects to HTTPS. The backend also supports request-level TLS enforcement via `ENFORCE_TLS`.
 
 ---
 

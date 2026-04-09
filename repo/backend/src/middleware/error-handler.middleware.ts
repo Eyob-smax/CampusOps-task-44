@@ -68,6 +68,32 @@ export function errorHandlerMiddleware(
     return;
   }
 
+  // Multer upload errors
+  if (isObject(err) && (err as Record<string, unknown>).name === 'MulterError') {
+    const multerCode =
+      typeof (err as Record<string, unknown>).code === 'string'
+        ? ((err as Record<string, unknown>).code as string)
+        : 'UPLOAD_ERROR';
+
+    if (multerCode === 'LIMIT_FILE_SIZE') {
+      res.status(413).json({
+        success: false,
+        error: 'File exceeds maximum size of 10 MB',
+        code: 'FILE_TOO_LARGE',
+        correlationId,
+      });
+      return;
+    }
+
+    res.status(400).json({
+      success: false,
+      error: 'Invalid file upload',
+      code: 'INVALID_UPLOAD',
+      correlationId,
+    });
+    return;
+  }
+
   // Known application errors
   if (err instanceof AppError) {
     if (err.statusCode >= 500) {

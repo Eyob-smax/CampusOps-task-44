@@ -21,12 +21,13 @@
           <el-option label="Delayed"   value="delayed" />
         </el-select>
         <el-select v-model="filterQueue" placeholder="All Queues" clearable style="width:220px" @change="load">
-          <el-option label="bulk-import"        value="campusops:bulk-import" />
-          <el-option label="shipment-sync"      value="campusops:shipment-sync" />
-          <el-option label="escalation-checker" value="campusops:escalation-checker" />
-          <el-option label="backup"             value="campusops:backup" />
-          <el-option label="metric-alert-check" value="campusops:metric-alert-check" />
-          <el-option label="log-retention"      value="campusops:log-retention" />
+          <el-option label="bulk-import"        value="campusops-bulk-import" />
+          <el-option label="shipment-sync"      value="campusops-shipment-sync" />
+          <el-option label="escalation-checker" value="campusops-escalation-checker" />
+          <el-option label="parking-sla-check"  value="campusops-parking-sla-check" />
+          <el-option label="backup"             value="campusops-backup" />
+          <el-option label="metric-alert-check" value="campusops-metric-alert-check" />
+          <el-option label="log-retention"      value="campusops-log-retention" />
         </el-select>
         <el-date-picker
           v-model="filterDateRange"

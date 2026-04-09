@@ -28,6 +28,9 @@ const PERMISSIONS: Record<string, string[]> = {
   'fulfillment:read': ['administrator', 'operations_manager', 'customer_service_agent', 'auditor'],
   'after-sales:read': ['administrator', 'operations_manager', 'customer_service_agent', 'auditor'],
   'shipment:read': ['administrator', 'operations_manager', 'customer_service_agent', 'auditor'],
+  'stored-value:read': ['administrator', 'operations_manager'],
+  'stored-value:topup': ['administrator', 'operations_manager'],
+  'stored-value:spend': ['administrator', 'operations_manager', 'customer_service_agent'],
   'metrics:read': ['administrator'],
   'logs:read': ['administrator'],
 };
@@ -133,7 +136,7 @@ describe('Permissions matrix', () => {
   // Customer service agent — fulfillment + after-sales + shipment
   // -----------------------------------------------------------------------
   describe('customer_service_agent permissions', () => {
-    const allowed = ['fulfillment:read', 'after-sales:read', 'shipment:read'];
+    const allowed = ['fulfillment:read', 'after-sales:read', 'shipment:read', 'stored-value:spend'];
     const denied = Object.keys(PERMISSIONS).filter((p) => !allowed.includes(p));
 
     it.each(allowed)('customer_service_agent CAN %s', (perm) => {
@@ -161,6 +164,9 @@ describe('Permissions matrix', () => {
       'fulfillment:read',
       'after-sales:read',
       'shipment:read',
+      'stored-value:read',
+      'stored-value:topup',
+      'stored-value:spend',
     ];
     const denied = Object.keys(PERMISSIONS).filter((p) => !allowed.includes(p));
 

@@ -6,6 +6,10 @@ dist/
 
 # Secrets — NEVER commit
 secrets/
+!repo/secrets/
+!repo/secrets/*.example
+repo/runtime-secrets/*
+!repo/runtime-secrets/.gitkeep
 
 # Environment files
 .env
@@ -33,3 +37,7 @@ certs/
 # Session and converted trajectory artifacts
 # Ignore raw session exports and converted trajectory JSONs
 trajectory*.json
+
+session*.json
+session.jsonl
+session-2.jsonl

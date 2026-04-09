@@ -42,7 +42,7 @@ If jobs were stalled, they will be retried automatically on worker restart.
    ```
    GET /api/metrics
    ```
-3. `campusops:metric-alert-check` job is running — look for `msg: "Metric alert check completed"` in logs.
+3. `campusops-metric-alert-check` job is running — look for `msg: "Metric alert check completed"` in logs.
 
 **Fix:** If the metric collection job has stalled, restart the backend.
 
@@ -83,7 +83,7 @@ Authorization: Bearer <admin-token>
 | `INVALID_MIME_TYPE`    | File is not JPEG or PNG                          | Re-upload with correct format   |
 | `INVALID_FILE_CONTENT` | Magic bytes don't match declared MIME type       | File may be corrupt or renamed  |
 | `FILE_TOO_LARGE`       | File exceeds 10 MB                               | Compress before uploading       |
-| `DUPLICATE_EVIDENCE`   | Perceptual hash ≤5 bits from an existing image  | Image is a near-duplicate       |
+| `DUPLICATE_EVIDENCE`   | Perceptual hash <= configured threshold (default 10) from an existing image | Image is a near-duplicate       |
 | `TICKET_NOT_FOUND`     | Ticket ID does not exist                         | Verify the ticket ID            |
 
 ---

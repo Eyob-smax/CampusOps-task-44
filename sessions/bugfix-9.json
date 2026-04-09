@@ -1,0 +1,60 @@
+{
+  "id": "bugfix-9",
+  "title": "Dockerized test failure remediation and cycle-03 fix-check closure",
+  "severity": "high",
+  "status": "resolved",
+  "dateFound": "2026-04-08",
+  "dateResolved": "2026-04-08",
+  "affectedFiles": [
+    "repo/docker-compose.test.yml",
+    "docs/api-spec.md",
+    ".tmp/self_test_reports/cycle-03/audit_report-3-fix_check_round_1.md",
+    ".tmp/self_tests_reports/cycle-03/audit_report-3-fix_check_round_1.md"
+  ],
+  "description": "Resolved this session's Dockerized test blockers (backend unit crypto key-length failures and API backup verification auth-plugin failure), then completed cycle-03 static fix-check reporting and stale endpoint documentation reconciliation.",
+  "errors": [
+    {
+      "file": "repo/docker-compose.test.yml",
+      "error": "Backend unit tests failed with ERR_CRYPTO_INVALID_KEYLEN in stored-value/encryption paths.",
+      "cause": "The backend unit test runner container did not have deterministic test secret values wired for encryption and JWT inputs.",
+      "fix": "Added explicit test env values for JWT_SECRET and a valid 64-hex ENCRYPTION_KEY under the backend unit test runner service."
+    },
+    {
+      "file": "repo/docker-compose.test.yml",
+      "error": "API observability backup test failed with backup trigger 500 due to dump authentication mismatch.",
+      "cause": "MySQL 8 default auth plugin was incompatible with the dump client path used in test backup flow.",
+      "fix": "Set test DB service command to use mysql_native_password plugin for test-stack compatibility."
+    },
+    {
+      "file": "docs/api-spec.md",
+      "error": "API spec contained stale endpoint/field contracts relative to implemented routes/controllers.",
+      "cause": "Contract rows drifted from current backend behavior across health, parking, carriers, delivery-zones, shipping templates, coupons, stored-value, logs, and admin settings/keys.",
+      "fix": "Updated stale method/path/query/body/response rows to match current implementation and removed outdated field names."
+    },
+    {
+      "file": ".tmp/self_test_reports/cycle-03/audit_report-3-fix_check_round_1.md",
+      "error": "Cycle-03 round-1 fix-check artifact was missing.",
+      "cause": "Static verification evidence had been gathered but not persisted as the requested round file.",
+      "fix": "Created cycle-03 round-1 fix-check report with per-finding status (H1/H2/M1/M2), evidence references, and doc-reconciliation outcome; duplicated to requested typo path for compatibility."
+    }
+  ],
+  "rootCause": "Two issues combined in this session: (1) test-stack environment incompatibilities (secret initialization and DB auth plugin behavior), and (2) documentation/reporting drift after prior code hardening.",
+  "impact": "Before these fixes, dockerized backend/API suites could fail despite valid business logic, and cycle-03 acceptance closure lacked a finalized round-1 artifact with fully aligned endpoint documentation.",
+  "validation": {
+    "method": "Dockerized suite execution plus static verification/document reconciliation in workspace.",
+    "result": "Session fixes verified",
+    "summary": {
+      "frontendUnit": "PASS",
+      "frontendTestFiles": 11,
+      "frontendTests": 283,
+      "backendUnit": "PASS",
+      "backendTestFiles": 26,
+      "backendTests": 524,
+      "apiFunctional": "PASS",
+      "apiSuites": 12,
+      "apiTests": 383,
+      "cycle03FixCheckReport": "PASS",
+      "staleEndpointDocReconciliation": "PASS"
+    }
+  }
+}

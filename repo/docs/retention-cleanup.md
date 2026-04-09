@@ -6,8 +6,8 @@ CampusOps automatically cleans up two categories of aging data:
 
 | Data type    | Retention period | Cleanup trigger                        |
 |--------------|------------------|----------------------------------------|
-| Log files    | 30 days          | BullMQ worker `campusops:log-retention` |
-| Backup files | 14 days (default)| BullMQ worker `campusops:backup`       |
+| Log files    | 30 days          | BullMQ worker `campusops-log-retention` |
+| Backup files | 14 days (default)| BullMQ worker `campusops-backup`       |
 
 ---
 
@@ -24,7 +24,7 @@ The retention worker deletes all `YYYY-MM-DD.log` files whose date is more than
 
 ### BullMQ worker
 
-Queue name: `campusops:log-retention`
+Queue name: `campusops-log-retention`
 
 Worker file: `backend/src/jobs/workers/log-retention.worker.ts`
 
@@ -65,7 +65,7 @@ the `BACKUP_RETENTION_DAYS` environment variable.
 
 ### BullMQ worker
 
-Queue name: `campusops:backup`
+Queue name: `campusops-backup`
 
 Worker file: `backend/src/jobs/workers/backup.worker.ts`
 
@@ -88,7 +88,7 @@ console.log(`Deleted ${deleted} backup records and files`);
 Check worker job results in BullMQ dashboard or Redis:
 
 ```bash
-redis-cli LRANGE "bull:campusops:log-retention:completed" 0 9
+redis-cli LRANGE "bull:campusops-log-retention:completed" 0 9
 ```
 
 Or check application logs for:
@@ -117,14 +117,14 @@ SELECT COUNT(*) FROM BackupRecord WHERE startedAt < DATE_SUB(NOW(), INTERVAL 14 
 ## Scheduler setup
 
 Both workers are triggered by BullMQ repeatable jobs. Ensure the scheduler is
-configured in `jobs/schedulers/` with appropriate cron expressions, for example:
+configured in `backend/src/jobs/index.ts` with appropriate cron expressions, for example:
 
 ```typescript
-// Daily backup at 03:00 UTC
-await backupQueue.add('daily-backup', {}, { repeat: { cron: '0 3 * * *' } });
+// Daily backup at 02:00 UTC
+await backupQueue.add('daily-backup', {}, { repeat: { pattern: '0 2 * * *' } });
 
-// Log cleanup at 02:00 UTC daily
-await logRetentionQueue.add('daily-log-cleanup', {}, { repeat: { cron: '0 2 * * *' } });
+// Log cleanup at 03:00 UTC daily
+await retentionQueue.add('log-cleanup', {}, { repeat: { pattern: '0 3 * * *' } });
 ```
 
 ---

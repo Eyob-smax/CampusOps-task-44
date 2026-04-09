@@ -30,7 +30,7 @@ export async function getAnomaliesHandler(req: Request, res: Response, next: Nex
       to:          req.query.to as string | undefined,
       page:        req.query.page  ? parseInt(req.query.page as string, 10)  : 1,
       limit:       req.query.limit ? parseInt(req.query.limit as string, 10) : 50,
-    });
+    }, req.user);
     res.json({ success: true, ...result });
   } catch (err) {
     next(err);
@@ -39,7 +39,7 @@ export async function getAnomaliesHandler(req: Request, res: Response, next: Nex
 
 export async function getAnomalyHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const anomaly = await getAnomalyById(req.params.id);
+    const anomaly = await getAnomalyById(req.params.id, req.user);
     if (!anomaly) {
       res.status(404).json({ success: false, error: 'Anomaly not found', code: 'NOT_FOUND' });
       return;
@@ -57,7 +57,7 @@ export async function createAnomalyHandler(req: Request, res: Response, next: Ne
       res.status(400).json({ success: false, error: 'Validation error', code: 'VALIDATION_ERROR', details: parsed.error.errors });
       return;
     }
-    const anomaly = await createAnomaly(parsed.data, req.user!.id);
+    const anomaly = await createAnomaly(parsed.data, req.user!.id, req.user);
     res.status(201).json({ success: true, data: anomaly });
   } catch (err) {
     next(err);
@@ -66,7 +66,7 @@ export async function createAnomalyHandler(req: Request, res: Response, next: Ne
 
 export async function acknowledgeAnomalyHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const anomaly = await acknowledgeAnomaly(req.params.id, req.user!.id);
+    const anomaly = await acknowledgeAnomaly(req.params.id, req.user!.id, req.user);
     res.json({ success: true, data: anomaly });
   } catch (err) {
     next(err);
@@ -80,7 +80,7 @@ export async function assignAnomalyHandler(req: Request, res: Response, next: Ne
       res.status(400).json({ success: false, error: 'Validation error', code: 'VALIDATION_ERROR', details: parsed.error.errors });
       return;
     }
-    const anomaly = await assignAnomaly(req.params.id, parsed.data, req.user!.id);
+    const anomaly = await assignAnomaly(req.params.id, parsed.data, req.user!.id, req.user);
     res.json({ success: true, data: anomaly });
   } catch (err) {
     next(err);
@@ -94,7 +94,7 @@ export async function resolveAnomalyHandler(req: Request, res: Response, next: N
       res.status(400).json({ success: false, error: 'Validation error', code: 'VALIDATION_ERROR', details: parsed.error.errors });
       return;
     }
-    const anomaly = await resolveAnomaly(req.params.id, parsed.data, req.user!.id);
+    const anomaly = await resolveAnomaly(req.params.id, parsed.data, req.user!.id, req.user);
     res.json({ success: true, data: anomaly });
   } catch (err) {
     next(err);
@@ -108,7 +108,7 @@ export async function escalateAnomalyHandler(req: Request, res: Response, next: 
       res.status(400).json({ success: false, error: 'Validation error', code: 'VALIDATION_ERROR', details: parsed.error.errors });
       return;
     }
-    const anomaly = await escalateAnomaly(req.params.id, parsed.data, req.user!.id);
+    const anomaly = await escalateAnomaly(req.params.id, parsed.data, req.user!.id, req.user);
     res.json({ success: true, data: anomaly });
   } catch (err) {
     next(err);

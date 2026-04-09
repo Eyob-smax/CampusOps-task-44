@@ -13,6 +13,10 @@ const {
   createAlertSchema,
   closeAlertSchema,
   escalateAlertSchema,
+  computeParkingSlaStatus,
+  canClaimParkingAlert,
+  canCloseParkingAlert,
+  canEscalateParkingAlert,
 } = await import('../src/modules/parking/alert.service');
 
 // ---- createAlertSchema ----
@@ -120,80 +124,61 @@ describe('escalateAlertSchema', () => {
   });
 });
 
-// ---- SLA status computation (pure logic) ----
+// ---- SLA status computation ----
 describe('SLA status computation', () => {
-  function computeSlaStatus(
-    slaDeadlineAt: Date | null,
-    closedAt: Date | null,
-    now: Date,
-  ): string {
-    if (closedAt) return 'closed';
-    if (!slaDeadlineAt) return 'within_sla';
-    const msRemaining = slaDeadlineAt.getTime() - now.getTime();
-    if (msRemaining < 0)            return 'breached';
-    if (msRemaining < 180_000)      return 'at_risk';
-    return 'within_sla';
-  }
-
   it('returns "closed" when closedAt is set', () => {
     const now = new Date();
     const deadline = new Date(now.getTime() + 10 * 60 * 1000);
-    expect(computeSlaStatus(deadline, new Date(), now)).toBe('closed');
+    expect(computeParkingSlaStatus(deadline, new Date(), now)).toBe('closed');
   });
 
   it('returns "within_sla" when 10 minutes remaining', () => {
     const now = new Date();
     const deadline = new Date(now.getTime() + 10 * 60 * 1000);
-    expect(computeSlaStatus(deadline, null, now)).toBe('within_sla');
+    expect(computeParkingSlaStatus(deadline, null, now)).toBe('within_sla');
   });
 
   it('returns "at_risk" when 2 minutes remaining (< 3 min threshold)', () => {
     const now = new Date();
     const deadline = new Date(now.getTime() + 2 * 60 * 1000);
-    expect(computeSlaStatus(deadline, null, now)).toBe('at_risk');
+    expect(computeParkingSlaStatus(deadline, null, now)).toBe('at_risk');
   });
 
   it('returns "at_risk" when exactly 2m 59s remaining', () => {
     const now = new Date();
     const deadline = new Date(now.getTime() + 179_999);
-    expect(computeSlaStatus(deadline, null, now)).toBe('at_risk');
+    expect(computeParkingSlaStatus(deadline, null, now)).toBe('at_risk');
   });
 
   it('returns "within_sla" when exactly 3 minutes remaining', () => {
     const now = new Date();
     const deadline = new Date(now.getTime() + 180_000);
-    expect(computeSlaStatus(deadline, null, now)).toBe('within_sla');
+    expect(computeParkingSlaStatus(deadline, null, now)).toBe('within_sla');
   });
 
   it('returns "breached" when deadline is in the past', () => {
     const now = new Date();
     const deadline = new Date(now.getTime() - 1000);
-    expect(computeSlaStatus(deadline, null, now)).toBe('breached');
+    expect(computeParkingSlaStatus(deadline, null, now)).toBe('breached');
   });
 
   it('returns "within_sla" when no deadline set', () => {
     const now = new Date();
-    expect(computeSlaStatus(null, null, now)).toBe('within_sla');
+    expect(computeParkingSlaStatus(null, null, now)).toBe('within_sla');
   });
 });
 
-// ---- Alert state transitions (pure logic) ----
+// ---- Alert state transitions ----
 describe('parking alert state transitions', () => {
-  type AlertStatus = 'open' | 'claimed' | 'closed' | 'escalated';
-
-  function canClaim(status: AlertStatus)    { return status === 'open'; }
-  function canClose(status: AlertStatus)    { return ['open', 'claimed'].includes(status); }
-  function canEscalate(status: AlertStatus) { return ['open', 'claimed'].includes(status); }
-
-  it('open → claimed: valid', () => expect(canClaim('open')).toBe(true));
-  it('claimed → claimed: invalid', () => expect(canClaim('claimed')).toBe(false));
-  it('closed → claimed: invalid', () => expect(canClaim('closed')).toBe(false));
-  it('open → closed: valid', () => expect(canClose('open')).toBe(true));
-  it('claimed → closed: valid', () => expect(canClose('claimed')).toBe(true));
-  it('escalated → closed: invalid', () => expect(canClose('escalated')).toBe(false));
-  it('open → escalated: valid', () => expect(canEscalate('open')).toBe(true));
-  it('claimed → escalated: valid', () => expect(canEscalate('claimed')).toBe(true));
-  it('closed → escalated: invalid', () => expect(canEscalate('closed')).toBe(false));
+  it('open → claimed: valid', () => expect(canClaimParkingAlert('open')).toBe(true));
+  it('claimed → claimed: invalid', () => expect(canClaimParkingAlert('claimed')).toBe(false));
+  it('closed → claimed: invalid', () => expect(canClaimParkingAlert('closed')).toBe(false));
+  it('open → closed: invalid (must be claimed first)', () => expect(canCloseParkingAlert('open')).toBe(false));
+  it('claimed → closed: valid', () => expect(canCloseParkingAlert('claimed')).toBe(true));
+  it('escalated → closed: invalid', () => expect(canCloseParkingAlert('escalated')).toBe(false));
+  it('open → escalated: valid', () => expect(canEscalateParkingAlert('open')).toBe(true));
+  it('claimed → escalated: valid', () => expect(canEscalateParkingAlert('claimed')).toBe(true));
+  it('closed → escalated: invalid', () => expect(canEscalateParkingAlert('closed')).toBe(false));
 });
 
 // ---- SLA deadline calculation ----

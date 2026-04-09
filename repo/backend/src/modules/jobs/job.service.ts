@@ -5,6 +5,7 @@ export interface JobListParams {
   queueName?: string;
   status?: JobStatus;
   actorId?: string;
+  campusId?: string;
   from?: Date;
   to?: Date;
   page?: number;
@@ -20,6 +21,7 @@ export async function listJobs(params: JobListParams) {
   if (params.queueName) where['queueName'] = { contains: params.queueName };
   if (params.status)    where['status']    = params.status;
   if (params.actorId)   where['actorId']   = params.actorId;
+  if (params.campusId)  where['campusId']  = params.campusId;
   if (params.from || params.to) {
     where['createdAt'] = {
       ...(params.from && { gte: params.from }),
@@ -55,11 +57,12 @@ export async function createJobRecord(data: {
   queueName: string;
   jobName: string;
   actorId?: string;
+  campusId?: string;
   idempotencyKey?: string;
   inputFilename?: string;
   totalRows?: number;
 }) {
-  return prisma.jobRecord.create({ data });
+  return prisma.jobRecord.create({ data: data as any });
 }
 
 export async function updateJobRecord(id: string, data: {
@@ -83,6 +86,7 @@ export interface SerializedJob {
   queueName: string;
   jobName: string;
   bullJobId: string | null;
+  campusId: string | null;
   status: string;
   progress: number;
   totalRows: number | null;
@@ -103,6 +107,7 @@ export interface SerializedJob {
 
 function serializeJob(job: {
   id: string; queueName: string; jobName: string; bullJobId: string | null;
+  campusId?: string | null;
   status: string; progress: number; totalRows: number | null; processedRows: number | null;
   failedRows: number | null; actorId: string | null; inputFilename: string | null;
   result: string | null; errorMsg: string | null; attempts: number; maxAttempts: number;
@@ -122,6 +127,7 @@ function serializeJob(job: {
     queueName: job.queueName,
     jobName: job.jobName,
     bullJobId: job.bullJobId,
+    campusId: job.campusId ?? null,
     status: job.status,
     progress: job.progress,
     totalRows: job.totalRows,

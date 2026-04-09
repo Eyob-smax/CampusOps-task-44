@@ -2,10 +2,11 @@ import { z } from "zod";
 import { prisma } from "../../lib/prisma";
 import { writeAuditEntry } from "../admin/audit.service";
 import { logger } from "../../lib/logger";
+import type { AuthenticatedUser } from "../../types";
 
 // ---- SLA map (hours) ----
 
-const SLA_HOURS: Record<string, number> = {
+export const AFTER_SALES_SLA_HOURS: Record<string, number> = {
   delay: 72,
   dispute: 48,
   lost_item: 96,
@@ -34,13 +35,17 @@ export const updateTicketStatusSchema = z.object({
 
 // ---- Valid status transitions ----
 
-const VALID_TRANSITIONS: Record<string, string[]> = {
+export const AFTER_SALES_VALID_TRANSITIONS: Record<string, string[]> = {
   open: ["under_review", "closed"],
   under_review: ["pending_approval", "closed"],
   pending_approval: ["resolved", "closed"],
   resolved: ["closed"],
   closed: [],
 };
+
+export function canTransitionAfterSalesStatus(from: string, to: string): boolean {
+  return (AFTER_SALES_VALID_TRANSITIONS[from] ?? []).includes(to);
+}
 
 // ---- Service functions ----
 
@@ -50,11 +55,17 @@ export async function listTickets(params: {
   status?: string;
   page?: number;
   limit?: number;
-}) {
+}, requester?: AuthenticatedUser) {
   const where: any = {};
+  if (requester?.campusId) {
+    where.campusId = requester.campusId;
+  }
   if (params.studentId) where.studentId = params.studentId;
   if (params.type) where.type = params.type;
   if (params.status) where.status = params.status;
+  if (requester?.role === "customer_service_agent") {
+    where.createdById = requester.id;
+  }
 
   const page = Math.max(1, params.page ?? 1);
   const limit = Math.min(100, Math.max(1, params.limit ?? 20));
@@ -74,9 +85,17 @@ export async function listTickets(params: {
   return { total, page, limit, items };
 }
 
-export async function getTicketById(id: string) {
-  const ticket = await prisma.afterSalesTicket.findUnique({
-    where: { id },
+export async function getTicketById(id: string, requester?: AuthenticatedUser) {
+  const where: any = { id };
+  if (requester?.campusId) {
+    where.campusId = requester.campusId;
+  }
+  if (requester?.role === "customer_service_agent") {
+    where.createdById = requester.id;
+  }
+
+  const ticket = await prisma.afterSalesTicket.findFirst({
+    where,
     include: {
       student: true,
       shipment: true,
@@ -98,13 +117,31 @@ export async function getTicketById(id: string) {
 export async function createTicket(
   data: z.infer<typeof createTicketSchema>,
   actorId: string,
+  requester?: AuthenticatedUser,
 ) {
-  const slaHours = SLA_HOURS[data.type] ?? 72;
+  const student = await prisma.student.findFirst({
+    where: {
+      id: data.studentId,
+      ...(requester?.campusId ? { campusId: requester.campusId } : {}),
+    } as any,
+    select: { id: true, campusId: true },
+  });
+
+  if (!student) {
+    const err: any = new Error('Student not found');
+    err.status = 404;
+    err.code = 'STUDENT_NOT_FOUND';
+    throw err;
+  }
+
+  const slaHours = AFTER_SALES_SLA_HOURS[data.type] ?? 72;
   const slaDeadlineAt = new Date(Date.now() + slaHours * 60 * 60 * 1000);
 
   const ticket = await prisma.afterSalesTicket.create({
     data: {
       studentId: data.studentId,
+      campusId: (student as any).campusId ?? requester?.campusId ?? 'main-campus',
+      createdById: actorId,
       shipmentId: data.shipmentId,
       parcelId: data.parcelId,
       type: data.type,
@@ -148,7 +185,7 @@ export async function createTicket(
   if (data.type === "delay") {
     try {
       const { suggestCompensation } = await import("./compensation.service");
-      await suggestCompensation(ticket.id, actorId);
+      await suggestCompensation(ticket.id, actorId, requester);
     } catch (compErr) {
       logger.warn({
         msg: "Auto compensation suggestion failed",
@@ -165,12 +202,12 @@ export async function updateTicketStatus(
   id: string,
   status: string,
   actorId: string,
+  requester?: AuthenticatedUser,
   note?: string,
 ) {
-  const ticket = await getTicketById(id);
+  const ticket = await getTicketById(id, requester);
 
-  const allowed = VALID_TRANSITIONS[ticket.status] ?? [];
-  if (!allowed.includes(status)) {
+  if (!canTransitionAfterSalesStatus(ticket.status, status)) {
     const err: any = new Error(
       `Cannot transition from '${ticket.status}' to '${status}'`,
     );

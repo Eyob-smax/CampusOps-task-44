@@ -42,7 +42,13 @@ describe("access token payload", () => {
     jti: string,
   ): string {
     return jwt.sign(
-      { id: user.id, username: user.username, role: user.role, jti },
+      {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        campusId: "main-campus",
+        jti,
+      },
       TEST_SECRET,
       { expiresIn: "15m" },
     );
@@ -73,6 +79,15 @@ describe("access token payload", () => {
     );
     const decoded = jwt.verify(token, TEST_SECRET) as any;
     expect(decoded.role).toBe("operations_manager");
+  });
+
+  it("contains campusId claim", () => {
+    const token = issueAccessToken(
+      { id: "u-1", username: "alice", role: "operations_manager" },
+      "jti-1",
+    );
+    const decoded = jwt.verify(token, TEST_SECRET) as any;
+    expect(decoded.campusId).toBe("main-campus");
   });
 
   it("contains jti claim", () => {

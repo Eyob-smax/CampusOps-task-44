@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { searchAuditLogs, writeAuditEntry } from './audit.service';
+import { searchAuditLogs, writeAuditEntry, getAuditLogById } from './audit.service';
 import { can } from '../../lib/permissions';
 
 export async function getAuditLogs(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -38,12 +38,8 @@ export async function revealAuditDetail(req: Request, res: Response, next: NextF
       return;
     }
 
-    const result = await searchAuditLogs(
-      { entityId: req.params.id, page: 1, limit: 1 },
-      true
-    );
-
-    if (!result.data.length) {
+    const log = await getAuditLogById(req.params.id, true);
+    if (!log) {
       res.status(404).json({ success: false, error: 'Audit log entry not found', code: 'NOT_FOUND' });
       return;
     }
@@ -57,7 +53,7 @@ export async function revealAuditDetail(req: Request, res: Response, next: NextF
       { justification: justification.trim(), actorRole: req.user!.role }
     );
 
-    res.status(200).json({ success: true, data: result.data[0] });
+    res.status(200).json({ success: true, data: log });
   } catch (err) {
     next(err);
   }

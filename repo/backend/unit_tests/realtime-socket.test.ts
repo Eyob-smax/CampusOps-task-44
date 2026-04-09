@@ -146,4 +146,32 @@ describe('Socket namespace authorization', () => {
     expect(received).toEqual(payload);
     alertsSocket.disconnect();
   });
+
+  it('delivers alert:threshold-breach payload with metric field', async () => {
+    const alertsSocket = await connectNamespace('/alerts', signToken('auditor'));
+
+    const payload = {
+      metric: 'cpu_utilization_percent',
+      value: 91,
+      threshold: 85,
+      message: 'CPU utilization breached threshold',
+    };
+
+    const received = await new Promise<typeof payload>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error('Timed out waiting for threshold breach event'));
+      }, 2000);
+
+      alertsSocket.once('alert:threshold-breach', (eventPayload) => {
+        clearTimeout(timer);
+        resolve(eventPayload as typeof payload);
+      });
+
+      emitToNamespace('/alerts', 'alert:threshold-breach', payload);
+    });
+
+    expect(received.metric).toBe('cpu_utilization_percent');
+    expect(received.value).toBe(91);
+    alertsSocket.disconnect();
+  });
 });

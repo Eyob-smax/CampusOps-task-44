@@ -4,10 +4,26 @@ import path from 'path';
 const isTestEnv = (process.env.NODE_ENV ?? 'development') === 'test';
 const isProductionEnv = (process.env.NODE_ENV ?? 'development') === 'production';
 
+function parseCsv(value: string): string[] {
+  return value
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .map((v) => v.replace(/\/+$/, ''));
+}
+
 function envBoolean(name: string, defaultValue: boolean): boolean {
   const raw = process.env[name];
   if (raw === undefined) return defaultValue;
   return raw.toLowerCase() === 'true';
+}
+
+function envPositiveInt(name: string, defaultValue: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) return defaultValue;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return defaultValue;
+  return parsed;
 }
 
 function readSecret(secretName: string, envFallback?: string): string {
@@ -56,10 +72,20 @@ export const config = {
     idempotencyRedisFailOpen: envBoolean('IDEMPOTENCY_REDIS_FAIL_OPEN', isTestEnv),
   },
 
+  cors: {
+    allowedOrigins: parseCsv(
+      process.env.CORS_ALLOWED_ORIGINS ??
+        'https://localhost,https://127.0.0.1,https://localhost:443,https://127.0.0.1:443',
+    ),
+    allowRequestsWithoutOrigin: envBoolean('CORS_ALLOW_REQUESTS_WITHOUT_ORIGIN', true),
+  },
+
   jwt: {
     secret: readSecret('jwt_secret', 'JWT_SECRET'),
     accessExpiresIn: '15m',
     refreshExpiresIn: '8h',
+    refreshCookieName: process.env.REFRESH_TOKEN_COOKIE_NAME ?? 'refreshToken',
+    refreshCookieSecure: envBoolean('REFRESH_TOKEN_COOKIE_SECURE', isProductionEnv),
   },
 
   encryption: {
@@ -81,8 +107,8 @@ export const config = {
 
   backup: {
     path: process.env.BACKUP_PATH ?? path.join(process.cwd(), 'backups'),
-    retentionDays: 14,
-    scheduleCron: '0 2 * * *',
+    retentionDays: envPositiveInt('BACKUP_RETENTION_DAYS', 14),
+    scheduleCron: process.env.BACKUP_SCHEDULE_CRON ?? '0 2 * * *',
   },
 
   rateLimit: {
@@ -92,9 +118,12 @@ export const config = {
   },
 
   circuitBreaker: {
-    timeout: 5_000,
-    errorThresholdPercentage: 50,
-    resetTimeout: 10_000,
+    timeout: parseInt(process.env.CIRCUIT_BREAKER_TIMEOUT_MS ?? '5000', 10),
+    errorThresholdPercentage: parseInt(process.env.CIRCUIT_BREAKER_ERROR_THRESHOLD_PERCENT ?? '50', 10),
+    resetTimeout: parseInt(process.env.CIRCUIT_BREAKER_RESET_TIMEOUT_MS ?? '600000', 10),
+    rollingCountTimeout: parseInt(process.env.CIRCUIT_BREAKER_ROLLING_COUNT_TIMEOUT_MS ?? '120000', 10),
+    rollingCountBuckets: parseInt(process.env.CIRCUIT_BREAKER_ROLLING_COUNT_BUCKETS ?? '12', 10),
+    volumeThreshold: parseInt(process.env.CIRCUIT_BREAKER_VOLUME_THRESHOLD ?? '5', 10),
   },
 
   classroom: {
@@ -105,6 +134,8 @@ export const config = {
   parking: {
     alertSlaMinutes: 15,
     secondLevelEscalationMinutes: 30,
+    sessionOvertimeMinutes: envPositiveInt('PARKING_OVERTIME_MINUTES', 120),
+    unsettledGraceMinutes: envPositiveInt('PARKING_UNSETTLED_GRACE_MINUTES', 10),
   },
 
   shipmentSync: {

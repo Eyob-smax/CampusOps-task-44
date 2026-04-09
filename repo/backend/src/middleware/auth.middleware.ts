@@ -25,7 +25,14 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
 
   const token = authHeader.slice(7);
   try {
-    const payload = jwt.verify(token, config.jwt.secret) as AuthenticatedUser & { jti?: string };
+    const payload = jwt.verify(token, config.jwt.secret) as AuthenticatedUser & { jti?: string; campusId?: string };
+
+    const authUser: AuthenticatedUser = {
+      id: payload.id,
+      username: payload.username,
+      role: payload.role,
+      campusId: payload.campusId ?? 'main-campus',
+    };
 
     // Check token blacklist (revoked tokens, e.g. after logout)
     const jti = payload.jti;
@@ -35,12 +42,12 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
           res.status(401).json({ success: false, error: 'Token has been revoked', code: 'TOKEN_REVOKED' });
           return;
         }
-        req.user = { id: payload.id, username: payload.username, role: payload.role };
+        req.user = authUser;
         next();
       }).catch((err) => {
         if (config.security.authRedisFailOpen) {
           logger.error({ msg: 'Auth revocation lookup failed — fail-open mode', err });
-          req.user = { id: payload.id, username: payload.username, role: payload.role };
+          req.user = authUser;
           next();
           return;
         }
@@ -53,7 +60,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
         });
       });
     } else {
-      req.user = { id: payload.id, username: payload.username, role: payload.role };
+      req.user = authUser;
       next();
     }
   } catch {
@@ -87,6 +94,25 @@ export function requirePermission(permission: Permission) {
       res.status(403).json({
         success: false,
         error: `Permission denied: ${permission}`,
+        code: 'FORBIDDEN',
+      });
+      return;
+    }
+    next();
+  };
+}
+
+/** Permission-based authorization for endpoints that accept any of several scopes */
+export function requireAnyPermission(permissions: Permission[]) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: 'Unauthenticated', code: 'UNAUTHORIZED' });
+      return;
+    }
+    if (!permissions.some((permission) => can(req.user!.role, permission))) {
+      res.status(403).json({
+        success: false,
+        error: `Permission denied: requires one of [${permissions.join(', ')}]`,
         code: 'FORBIDDEN',
       });
       return;

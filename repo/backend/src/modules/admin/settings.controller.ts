@@ -5,12 +5,23 @@ import {
   getAlertThresholds, upsertAlertThreshold,
   getBackupRecords,
 } from './settings.service';
+import { normalizeThresholdOperator } from '../observability/threshold-operator';
 
 const updateSettingsSchema = z.record(z.string(), z.string());
 
 const thresholdSchema = z.object({
   metricName: z.string().min(1).max(100),
-  operator:   z.enum(['gt', 'lt', 'gte', 'lte']),
+  operator: z.string().transform((value, ctx) => {
+    const normalized = normalizeThresholdOperator(value);
+    if (!normalized) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'operator must be one of >, <, >=, <=, == (aliases gt/lt/gte/lte/eq are accepted)',
+      });
+      return z.NEVER;
+    }
+    return normalized;
+  }),
   value:      z.number(),
   isActive:   z.boolean().default(true),
 });

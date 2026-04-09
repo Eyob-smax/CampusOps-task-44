@@ -11,13 +11,13 @@ import { decryptAmount } from "../../lib/encryption";
 
 const topUpSchema = z.object({
   amount: z.number().positive().max(10000),
-  note: z.string().optional(),
+  note: z.string().trim().max(500).optional(),
 });
 
 const spendSchema = z.object({
   amount: z.number().positive(),
-  referenceId: z.string().min(1),
-  referenceType: z.string().min(1),
+  referenceId: z.string().trim().min(1).max(120),
+  referenceType: z.string().trim().min(1).max(40),
 });
 
 export async function getBalanceHandler(
@@ -26,7 +26,7 @@ export async function getBalanceHandler(
   next: NextFunction,
 ) {
   try {
-    const balance = await getBalance(req.params.studentId);
+    const balance = await getBalance(req.params.studentId, req.user);
     // Keep legacy shape while providing standardized envelope.
     res.json({ success: true, data: { balance }, balance });
   } catch (err) {
@@ -47,6 +47,7 @@ export async function topUpHandler(
       body.amount,
       actorId,
       body.note,
+      req.user,
     );
     // Keep legacy shape while providing standardized envelope.
     res.status(201).json({ success: true, data, ...data });
@@ -69,6 +70,7 @@ export async function spendHandler(
       body.referenceId,
       body.referenceType,
       actorId,
+      req.user,
     );
     // Keep legacy shape while providing standardized envelope.
     res.json({ success: true, data, ...data });
@@ -88,7 +90,7 @@ export async function listTransactionsHandler(
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
       type,
-    });
+    }, req.user);
 
     const items = result.items.map((item) => ({
       ...item,
@@ -116,7 +118,7 @@ export async function getReceiptHandler(
   next: NextFunction,
 ) {
   try {
-    const text = await generateReceiptText(req.params.id);
+    const text = await generateReceiptText(req.params.id, req.user);
     res.type("text/plain").send(text);
   } catch (err) {
     next(err);

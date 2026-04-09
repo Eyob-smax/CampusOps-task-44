@@ -14,7 +14,7 @@ const router = Router();
 router.get('/', authenticate, requirePermission('fulfillment:read'), listFulfillments);
 router.post('/', authenticate, requirePermission('fulfillment:create'), idempotencyMiddleware, createFulfillmentHandler);
 router.get('/:id', authenticate, requirePermission('fulfillment:read'), getFulfillment);
-router.patch('/:id/status', authenticate, requirePermission('fulfillment:manage'), updateStatusHandler);
-router.patch('/:id/cancel', authenticate, requirePermission('fulfillment:manage'), cancelFulfillmentHandler);
+router.patch('/:id/status', authenticate, requirePermission('fulfillment:manage'), idempotencyMiddleware, updateStatusHandler);
+router.patch('/:id/cancel', authenticate, requirePermission('fulfillment:manage'), idempotencyMiddleware, cancelFulfillmentHandler);
 
 export default router;

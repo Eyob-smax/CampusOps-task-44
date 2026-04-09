@@ -107,13 +107,7 @@
 
         <el-sub-menu
           index="membership"
-          v-if="
-            hasRole([
-              'administrator',
-              'operations_manager',
-              'customer_service_agent',
-            ])
-          "
+          v-if="hasRole(['administrator', 'operations_manager'])"
         >
           <template #title>
             <el-icon><Medal /></el-icon>

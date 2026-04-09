@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../lib/logger';
+import { observeRequest } from '../modules/observability/request-metrics.store';
 
 /**
  * Structured HTTP request/response logger.
@@ -20,6 +21,7 @@ export function requestLoggerMiddleware(
   res.on('finish', () => {
     const durationMs = Date.now() - startMs;
     const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
+    observeRequest(durationMs, res.statusCode);
 
     logger[level]({
       msg: 'HTTP request',

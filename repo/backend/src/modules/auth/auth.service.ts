@@ -21,7 +21,13 @@ export interface TokenPair {
 function issueTokenPair(user: AuthenticatedUser): TokenPair {
   const jti = uuidv4();
   const accessToken = jwt.sign(
-    { id: user.id, username: user.username, role: user.role, jti },
+    {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      campusId: user.campusId,
+      jti,
+    },
     config.jwt.secret,
     { expiresIn: config.jwt.accessExpiresIn }
   );
@@ -55,11 +61,20 @@ export async function loginUser(
     : await bcrypt.compare(password, dummyHash).then(() => false);
 
   if (!dbUser || !valid || !dbUser.isActive) {
-    await writeAuditLog(dbUser?.id ?? 'unknown', 'auth:login:failed', 'user', dbUser?.id ?? username, { username, ipAddress });
+    if (dbUser?.id) {
+      await writeAuditLog(dbUser.id, 'auth:login:failed', 'user', dbUser.id, { username, ipAddress });
+    } else {
+      logger.warn({ msg: 'Skipping failed login audit for unknown username', username, ipAddress });
+    }
     throw Object.assign(new Error('Invalid credentials'), { statusCode: 401, code: 'UNAUTHORIZED' });
   }
 
-  const user: AuthenticatedUser = { id: dbUser.id, username: dbUser.username, role: dbUser.role };
+  const user: AuthenticatedUser = {
+    id: dbUser.id,
+    username: dbUser.username,
+    role: dbUser.role,
+    campusId: (dbUser as any).campusId ?? 'main-campus',
+  };
   const tokens = issueTokenPair(user);
 
   await writeAuditLog(user.id, 'auth:login:success', 'user', user.id, { ipAddress });
@@ -93,7 +108,12 @@ export async function refreshTokens(refreshToken: string): Promise<TokenPair> {
     throw Object.assign(new Error('User not found or inactive'), { statusCode: 401, code: 'UNAUTHORIZED' });
   }
 
-  const user: AuthenticatedUser = { id: dbUser.id, username: dbUser.username, role: dbUser.role };
+  const user: AuthenticatedUser = {
+    id: dbUser.id,
+    username: dbUser.username,
+    role: dbUser.role,
+    campusId: (dbUser as any).campusId ?? 'main-campus',
+  };
   return issueTokenPair(user);
 }
 

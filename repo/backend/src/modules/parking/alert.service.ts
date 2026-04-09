@@ -2,10 +2,11 @@ import { z } from "zod";
 import { ParkingAlertStatus, ParkingAlertType } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
-import { emitToNamespace } from "../../lib/socket";
+import { emitToCampusNamespace } from "../../lib/socket";
 import { logger } from "../../lib/logger";
 import { config } from "../../config";
 import { writeAuditEntry } from "../admin/audit.service";
+import type { AuthenticatedUser } from "../../types";
 
 // ---- Validators ----
 export const createAlertSchema = z.object({
@@ -34,21 +35,40 @@ const alertInclude = {
   timeline: { orderBy: { createdAt: "asc" as const } },
 };
 
+export type ParkingSlaStatus = "within_sla" | "at_risk" | "breached" | "closed";
+
+export function computeParkingSlaStatus(
+  slaDeadlineAt: Date | null,
+  closedAt: Date | null,
+  now: Date = new Date(),
+): ParkingSlaStatus {
+  if (closedAt) return "closed";
+  if (!slaDeadlineAt) return "within_sla";
+
+  const msRemaining = slaDeadlineAt.getTime() - now.getTime();
+  if (msRemaining < 0) return "breached";
+  if (msRemaining < 180_000) return "at_risk"; // < 3 min
+  return "within_sla";
+}
+
+export function canClaimParkingAlert(status: string): boolean {
+  return status === "open";
+}
+
+export function canCloseParkingAlert(status: string): boolean {
+  return status === "claimed";
+}
+
+export function canEscalateParkingAlert(status: string): boolean {
+  return ["open", "claimed"].includes(status);
+}
+
 function serializeAlert(a: Record<string, unknown>) {
   const createdAt = a.createdAt as Date;
   const slaDeadlineAt = a.slaDeadlineAt as Date | null;
   const closedAt = a.closedAt as Date | null;
   const now = new Date();
-
-  let slaStatus: "within_sla" | "at_risk" | "breached" | "closed" =
-    "within_sla";
-  if (closedAt) {
-    slaStatus = "closed";
-  } else if (slaDeadlineAt) {
-    const msRemaining = slaDeadlineAt.getTime() - now.getTime();
-    if (msRemaining < 0) slaStatus = "breached";
-    else if (msRemaining < 180_000) slaStatus = "at_risk"; // < 3 min
-  }
+  const slaStatus = computeParkingSlaStatus(slaDeadlineAt, closedAt, now);
 
   return {
     ...a,
@@ -70,7 +90,7 @@ export async function listAlerts(params: {
   search?: string;
   page?: number;
   limit?: number;
-}) {
+}, requester?: AuthenticatedUser) {
   const {
     lotId,
     status,
@@ -82,6 +102,7 @@ export async function listAlerts(params: {
     limit = 50,
   } = params;
   const where: Record<string, unknown> = {};
+  if (requester?.campusId) where.campusId = requester.campusId;
   if (lotId) where.lotId = lotId;
   if (type) where.type = type;
   if (status) {
@@ -123,9 +144,12 @@ export async function listAlerts(params: {
 }
 
 // ---- Get alert by id ----
-export async function getAlertById(id: string) {
-  const alert = await prisma.parkingAlert.findUnique({
-    where: { id },
+export async function getAlertById(id: string, requester?: AuthenticatedUser) {
+  const alert = await prisma.parkingAlert.findFirst({
+    where: {
+      id,
+      ...(requester?.campusId ? { campusId: requester.campusId } : {}),
+    },
     include: alertInclude,
   });
   if (!alert) return null;
@@ -136,10 +160,14 @@ export async function getAlertById(id: string) {
 export async function createAlert(
   data: z.infer<typeof createAlertSchema>,
   actorId: string,
+  requester?: AuthenticatedUser,
 ) {
   const payload = createAlertSchema.parse(data);
-  const lot = await prisma.parkingLot.findUnique({
-    where: { id: payload.lotId },
+  const lot = await prisma.parkingLot.findFirst({
+    where: {
+      id: payload.lotId,
+      ...(requester?.campusId ? { campusId: requester.campusId } : {}),
+    },
   });
   if (!lot)
     throw Object.assign(new Error("Lot not found"), {
@@ -151,6 +179,7 @@ export async function createAlert(
   if (["overtime", "no_plate_captured"].includes(payload.type)) {
     const existing = await prisma.parkingAlert.findFirst({
       where: {
+        campusId: lot.campusId,
         lotId: payload.lotId,
         type: payload.type,
         status: { in: ["open", "claimed"] },
@@ -169,6 +198,7 @@ export async function createAlert(
   );
 
   const createData: Prisma.ParkingAlertUncheckedCreateInput = {
+    campusId: lot.campusId,
     lotId: payload.lotId,
     type: payload.type,
     description: payload.description,
@@ -190,8 +220,9 @@ export async function createAlert(
     },
   });
 
-  emitToNamespace("/parking", "alert:created", {
+  emitToCampusNamespace("/parking", lot.campusId, "alert:created", {
     alertId: alert.id,
+    campusId: lot.campusId,
     lotId: payload.lotId,
     type: payload.type,
     status: "open",
@@ -209,14 +240,19 @@ export async function createAlert(
 }
 
 // ---- Claim: open → claimed ----
-export async function claimAlert(id: string, actorId: string) {
-  const alert = await prisma.parkingAlert.findUnique({ where: { id } });
+export async function claimAlert(id: string, actorId: string, requester?: AuthenticatedUser) {
+  const alert = await prisma.parkingAlert.findFirst({
+    where: {
+      id,
+      ...(requester?.campusId ? { campusId: requester.campusId } : {}),
+    },
+  });
   if (!alert)
     throw Object.assign(new Error("Alert not found"), {
       status: 404,
       code: "NOT_FOUND",
     });
-  if (alert.status !== "open") {
+  if (!canClaimParkingAlert(alert.status)) {
     throw Object.assign(
       new Error(`Cannot claim alert in status '${alert.status}'`),
       { status: 409, code: "INVALID_TRANSITION" },
@@ -233,8 +269,9 @@ export async function claimAlert(id: string, actorId: string) {
     data: { alertId: id, actorId, action: "claimed" },
   });
 
-  emitToNamespace("/parking", "alert:updated", {
+  emitToCampusNamespace("/parking", alert.campusId, "alert:updated", {
     alertId: id,
+    campusId: alert.campusId,
     status: "claimed",
     actorId,
   });
@@ -253,14 +290,20 @@ export async function closeAlert(
   id: string,
   data: z.infer<typeof closeAlertSchema>,
   actorId: string,
+  requester?: AuthenticatedUser,
 ) {
-  const alert = await prisma.parkingAlert.findUnique({ where: { id } });
+  const alert = await prisma.parkingAlert.findFirst({
+    where: {
+      id,
+      ...(requester?.campusId ? { campusId: requester.campusId } : {}),
+    },
+  });
   if (!alert)
     throw Object.assign(new Error("Alert not found"), {
       status: 404,
       code: "NOT_FOUND",
     });
-  if (alert.status !== "claimed") {
+  if (!canCloseParkingAlert(alert.status)) {
     throw Object.assign(
       new Error(`Cannot close alert in status '${alert.status}'`),
       { status: 409, code: "INVALID_TRANSITION" },
@@ -283,8 +326,9 @@ export async function closeAlert(
     data: { alertId: id, actorId, action: "closed", note: data.closureNote },
   });
 
-  emitToNamespace("/parking", "alert:updated", {
+  emitToCampusNamespace("/parking", alert.campusId, "alert:updated", {
     alertId: id,
+    campusId: alert.campusId,
     status: "closed",
     actorId,
   });
@@ -299,14 +343,20 @@ export async function escalateAlert(
   id: string,
   data: z.infer<typeof escalateAlertSchema>,
   actorId: string | null,
+  requester?: AuthenticatedUser,
 ) {
-  const alert = await prisma.parkingAlert.findUnique({ where: { id } });
+  const alert = await prisma.parkingAlert.findFirst({
+    where: {
+      id,
+      ...(requester?.campusId ? { campusId: requester.campusId } : {}),
+    },
+  });
   if (!alert)
     throw Object.assign(new Error("Alert not found"), {
       status: 404,
       code: "NOT_FOUND",
     });
-  if (!["open", "claimed"].includes(alert.status)) {
+  if (!canEscalateParkingAlert(alert.status)) {
     throw Object.assign(
       new Error(`Cannot escalate alert in status '${alert.status}'`),
       { status: 409, code: "INVALID_TRANSITION" },
@@ -332,13 +382,15 @@ export async function escalateAlert(
     },
   });
 
-  emitToNamespace("/parking", "alert:updated", {
+  emitToCampusNamespace("/parking", alert.campusId, "alert:updated", {
     alertId: id,
+    campusId: alert.campusId,
     status: "escalated",
     actorId,
   });
-  emitToNamespace("/supervisor-queue", "parking:alert:escalated", {
+  emitToCampusNamespace("/supervisor-queue", alert.campusId, "parking:alert:escalated", {
     alertId: id,
+    campusId: alert.campusId,
     lotId: alert.lotId,
     type: alert.type,
     auto: !actorId,
@@ -365,7 +417,7 @@ export async function escalateSlaBreaches(): Promise<number> {
       status: { in: ["open", "claimed"] },
       slaDeadlineAt: { lte: now, not: null },
     },
-    select: { id: true, lotId: true, type: true },
+    select: { id: true, campusId: true, lotId: true, type: true },
   });
 
   for (const alert of breached) {
@@ -390,8 +442,9 @@ export async function escalateSlaBreaches(): Promise<number> {
 }
 
 // ---- Metrics ----
-export async function getAlertMetrics(lotId?: string) {
+export async function getAlertMetrics(lotId?: string, requester?: AuthenticatedUser) {
   const where: Record<string, unknown> = {};
+  if (requester?.campusId) where.campusId = requester.campusId;
   if (lotId) where.lotId = lotId;
 
   const oneHourAgo = new Date(Date.now() - 3_600_000);

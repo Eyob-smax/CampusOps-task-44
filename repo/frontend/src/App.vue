@@ -81,6 +81,14 @@ onUnmounted(() => {
 </script>
 
 <style>
+:root {
+  --app-font: "Avenir Next", "Segoe UI Variable", "IBM Plex Sans", "Noto Sans", sans-serif;
+  --app-bg-base: #f5f7f9;
+  --app-bg-tint: #e6edf3;
+  --app-bg-accent: #dbe5ec;
+  --app-text: #1e2a33;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -89,20 +97,31 @@ onUnmounted(() => {
 
 html, body, #app {
   height: 100%;
-  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', Arial, sans-serif;
+  font-family: var(--app-font);
+  color: var(--app-text);
+}
+
+body {
+  background:
+    radial-gradient(circle at 0% 0%, var(--app-bg-accent) 0%, rgba(219, 229, 236, 0) 42%),
+    radial-gradient(circle at 100% 100%, var(--app-bg-tint) 0%, rgba(230, 237, 243, 0) 38%),
+    linear-gradient(180deg, var(--app-bg-base) 0%, #f2f5f8 100%);
 }
 
 .alert-banner {
   position: fixed;
-  top: 0;
+  top: 10px;
   left: 0;
   right: 0;
   z-index: 9999;
-  padding: 0;
+  padding: 0 12px;
 }
 
 .alert-banner .el-alert {
-  border-radius: 0;
+  border-radius: 10px;
+  max-width: 1280px;
+  margin: 0 auto;
   font-size: 14px;
+  border: 1px solid rgba(176, 42, 55, 0.2);
 }
 </style>

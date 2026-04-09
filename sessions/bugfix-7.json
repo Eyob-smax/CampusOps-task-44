@@ -1,0 +1,48 @@
+{
+  "id": "bugfix-7",
+  "title": "Schema-sync path resolution and Docker schema mirror availability",
+  "severity": "high",
+  "status": "resolved",
+  "dateFound": "2026-04-08",
+  "dateResolved": "2026-04-08",
+  "affectedFiles": [
+    "repo/backend/Dockerfile",
+    "repo/backend/unit_tests/schema-sync.test.ts",
+    "repo/docs/test-plan.md"
+  ],
+  "description": "Resolved the schema-sync unit test failure in containerized execution by ensuring the mirror schema is present in the backend image and by making path resolution in the test robust across local and Docker working directories. Updated test-plan wording to match the implementation and avoid stale docs.",
+  "errors": [
+    {
+      "file": "repo/backend/unit_tests/schema-sync.test.ts",
+      "error": "Schema parity test failed with ENOENT for /app/database/schema.prisma in Docker test runs.",
+      "cause": "The test assumed a single fixed root layout and did not tolerate alternative working directories or missing mirror path in image.",
+      "fix": "Added candidate-path resolution for canonical and mirror schema files, with explicit failure output listing all attempted paths."
+    },
+    {
+      "file": "repo/backend/Dockerfile",
+      "error": "Backend runtime/test image did not include database/schema.prisma required by schema-sync checks.",
+      "cause": "Dockerfile copied prisma/ but omitted database/ mirror schema directory in final stage.",
+      "fix": "Copied /app/database into the final image to guarantee mirror schema availability during unit tests."
+    },
+    {
+      "file": "repo/docs/test-plan.md",
+      "error": "Schema-sync test documentation was stale regarding execution-root assumptions.",
+      "cause": "Doc wording implied a single filesystem root behavior.",
+      "fix": "Updated test-plan to explicitly describe compatibility across local and Docker test roots."
+    }
+  ],
+  "rootCause": "A filesystem layout assumption in tests plus incomplete file packaging in the backend image created environment-specific schema-sync failures.",
+  "impact": "Before this fix, schema parity checks could fail in Docker despite valid schemas, reducing confidence in CI-style containerized testing.",
+  "validation": {
+    "method": "Session test execution summary provided by user",
+    "result": "All requested suites passed",
+    "summary": {
+      "frontendUnit": "PASS",
+      "prepareBackendApiDependencies": "PASS",
+      "backendUnit": "PASS",
+      "apiFunctional": "PASS",
+      "suitesPassed": 4,
+      "suitesFailed": 0
+    }
+  }
+}

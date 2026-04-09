@@ -174,6 +174,24 @@ describe('Auth Store', () => {
       expect(auth.can('fulfillment:read')).toBe(true);
     });
 
+    it('returns true for operations_manager on stored-value:read', () => {
+      const auth = useAuthStore();
+      auth.user = makeUser('operations_manager');
+      expect(auth.can('stored-value:read')).toBe(true);
+    });
+
+    it('returns false for customer_service_agent on stored-value:read', () => {
+      const auth = useAuthStore();
+      auth.user = makeUser('customer_service_agent');
+      expect(auth.can('stored-value:read')).toBe(false);
+    });
+
+    it('returns true for customer_service_agent on stored-value:spend', () => {
+      const auth = useAuthStore();
+      auth.user = makeUser('customer_service_agent');
+      expect(auth.can('stored-value:spend')).toBe(true);
+    });
+
     it('returns false for unknown permission', () => {
       const auth = useAuthStore();
       auth.user = makeUser('administrator');

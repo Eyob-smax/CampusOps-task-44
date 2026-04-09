@@ -144,9 +144,14 @@ describe("Token Lifecycle", () => {
 
       await vi.advanceTimersByTimeAsync(60_000);
 
-      expect(mockPost).toHaveBeenCalledWith("/api/auth/refresh", {
-        refreshToken: "rt-1",
-      });
+      const refreshCalls = mockPost.mock.calls.filter(
+        (c: any[]) => c[0] === "/api/auth/refresh",
+      );
+      expect(refreshCalls).toHaveLength(1);
+      expect(refreshCalls[0]).toEqual([
+        "/api/auth/refresh",
+        { refreshToken: "rt-1" },
+      ]);
     });
 
     it("uses minimum delay of 10 seconds for short-lived tokens", async () => {
@@ -278,6 +283,29 @@ describe("Token Lifecycle", () => {
       });
       expect(globalThis.localStorage.getItem("refresh_token")).toBeNull();
       expect(auth.accessToken).toBe("tok-new");
+    });
+
+    it("uses empty refresh payload in default cookie mode without legacy token", async () => {
+      const auth = useAuthStore();
+
+      mockPost.mockResolvedValueOnce({
+        data: {
+          success: true,
+          data: {
+            accessToken: "tok-cookie",
+            refreshToken: "rt-cookie",
+            expiresIn: 120,
+          },
+        },
+      });
+      mockGet.mockResolvedValueOnce({
+        data: { success: true, data: makeUser() },
+      });
+
+      await auth.refreshSession();
+
+      expect(mockPost).toHaveBeenCalledWith("/api/auth/refresh", {});
+      expect(auth.accessToken).toBe("tok-cookie");
     });
   });
 });

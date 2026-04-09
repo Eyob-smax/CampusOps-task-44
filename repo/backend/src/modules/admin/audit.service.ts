@@ -101,3 +101,38 @@ export async function searchAuditLogs(
 
   return { data, total };
 }
+
+export async function getAuditLogById(
+  id: string,
+  revealDetail = false,
+): Promise<AuditLogEntry | null> {
+  const log = await prisma.auditLog.findUnique({
+    where: { id },
+    include: { actor: { select: { username: true } } },
+  });
+
+  if (!log) {
+    return null;
+  }
+
+  let detail: Record<string, unknown> | null = null;
+  if (revealDetail) {
+    try {
+      detail = JSON.parse(decrypt(log.encryptedDetail)) as Record<string, unknown>;
+    } catch {
+      detail = { error: 'decrypt_failed' };
+    }
+  }
+
+  return {
+    id: log.id,
+    actorId: log.actorId,
+    actorUsername: log.actor.username,
+    action: log.action,
+    entityType: log.entityType,
+    entityId: log.entityId,
+    detail,
+    ipAddress: log.ipAddress,
+    createdAt: log.createdAt,
+  };
+}

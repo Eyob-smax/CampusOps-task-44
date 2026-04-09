@@ -28,14 +28,14 @@ export async function getAlertsHandler(req: Request, res: Response, next: NextFu
       to:     req.query.to     as string,
       page:   req.query.page   ? parseInt(req.query.page  as string, 10) : 1,
       limit:  req.query.limit  ? parseInt(req.query.limit as string, 10) : 50,
-    });
+    }, req.user);
     res.json({ success: true, ...result });
   } catch (err) { next(err); }
 }
 
 export async function getAlertHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const alert = await getAlertById(req.params.id);
+    const alert = await getAlertById(req.params.id, req.user);
     if (!alert) { res.status(404).json({ success: false, error: 'Alert not found', code: 'NOT_FOUND' }); return; }
     res.json({ success: true, data: alert });
   } catch (err) { next(err); }
@@ -45,14 +45,14 @@ export async function createAlertHandler(req: Request, res: Response, next: Next
   try {
     const parsed = createAlertSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ success: false, error: 'Validation error', code: 'VALIDATION_ERROR', details: parsed.error.errors }); return; }
-    const alert = await createAlert(parsed.data, req.user!.id);
+    const alert = await createAlert(parsed.data, req.user!.id, req.user);
     res.status(201).json({ success: true, data: alert });
   } catch (err) { next(err); }
 }
 
 export async function claimAlertHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    res.json({ success: true, data: await claimAlert(req.params.id, req.user!.id) });
+    res.json({ success: true, data: await claimAlert(req.params.id, req.user!.id, req.user) });
   } catch (err) { next(err); }
 }
 
@@ -60,7 +60,7 @@ export async function closeAlertHandler(req: Request, res: Response, next: NextF
   try {
     const parsed = closeAlertSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ success: false, error: 'Validation error', code: 'VALIDATION_ERROR', details: parsed.error.errors }); return; }
-    res.json({ success: true, data: await closeAlert(req.params.id, parsed.data, req.user!.id) });
+    res.json({ success: true, data: await closeAlert(req.params.id, parsed.data, req.user!.id, req.user) });
   } catch (err) { next(err); }
 }
 
@@ -68,12 +68,12 @@ export async function escalateAlertHandler(req: Request, res: Response, next: Ne
   try {
     const parsed = escalateAlertSchema.safeParse(req.body ?? {});
     if (!parsed.success) { res.status(400).json({ success: false, error: 'Validation error', code: 'VALIDATION_ERROR', details: parsed.error.errors }); return; }
-    res.json({ success: true, data: await escalateAlert(req.params.id, parsed.data, req.user!.id) });
+    res.json({ success: true, data: await escalateAlert(req.params.id, parsed.data, req.user!.id, req.user) });
   } catch (err) { next(err); }
 }
 
 export async function getMetricsHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    res.json({ success: true, data: await getAlertMetrics(req.query.lotId as string) });
+    res.json({ success: true, data: await getAlertMetrics(req.query.lotId as string, req.user) });
   } catch (err) { next(err); }
 }

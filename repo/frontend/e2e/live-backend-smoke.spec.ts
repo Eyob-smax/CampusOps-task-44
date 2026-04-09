@@ -11,17 +11,22 @@ const runLive =
 const creds = {
   admin: {
     username: process.env.E2E_ADMIN_USERNAME ?? "admin",
-    password: process.env.E2E_ADMIN_PASSWORD ?? "Admin#12345",
+    password: process.env.E2E_ADMIN_PASSWORD ?? "",
   },
   opsManager: {
     username: process.env.E2E_OPS_USERNAME ?? "ops_manager",
-    password: process.env.E2E_OPS_PASSWORD ?? "OpsManager#12345",
+    password: process.env.E2E_OPS_PASSWORD ?? "",
   },
   csAgent: {
     username: process.env.E2E_AGENT_USERNAME ?? "cs_agent",
-    password: process.env.E2E_AGENT_PASSWORD ?? "CsAgent#12345",
+    password: process.env.E2E_AGENT_PASSWORD ?? "",
   },
 };
+
+const hasLiveCredentials =
+  Boolean(creds.admin.password) &&
+  Boolean(creds.opsManager.password) &&
+  Boolean(creds.csAgent.password);
 
 async function login(
   page: Parameters<typeof test>[0]["page"],
@@ -37,8 +42,8 @@ async function login(
 
 test.describe("Live backend smoke", () => {
   test.skip(
-    !runLive,
-    "Set E2E_SKIP_LIVE_BACKEND=true (or E2E_LIVE_BACKEND=false) to skip live backend smoke tests",
+    !runLive || !hasLiveCredentials,
+    "Set E2E_SKIP_LIVE_BACKEND=true (or E2E_LIVE_BACKEND=false), and provide E2E_*_PASSWORD values to run live backend smoke tests",
   );
 
   test("administrator workflow: dashboard and admin users", async ({

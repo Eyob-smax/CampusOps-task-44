@@ -2,10 +2,11 @@ import { AnomalyEventStatus } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma";
-import { emitToNamespace } from "../../lib/socket";
+import { emitToCampusNamespace } from "../../lib/socket";
 import { logger } from "../../lib/logger";
 import { config } from "../../config";
 import { writeAuditEntry } from "../admin/audit.service";
+import type { AuthenticatedUser } from "../../types";
 
 // ---- Validators ----
 export const createAnomalySchema = z.object({
@@ -23,7 +24,7 @@ export const resolveAnomalySchema = z.object({
   resolutionNote: z
     .string()
     .trim()
-    .min(10, "Resolution note must be at least 10 characters")
+    .min(20, "Resolution note must be at least 20 characters")
     .max(2000),
 });
 
@@ -78,6 +79,22 @@ const anomalyInclude = {
   },
 };
 
+export function canAcknowledgeAnomalyStatus(status: string): boolean {
+  return status === 'open';
+}
+
+export function canAssignAnomalyStatus(status: string): boolean {
+  return status === 'acknowledged';
+}
+
+export function canResolveAnomalyStatus(status: string): boolean {
+  return status === 'assigned';
+}
+
+export function canEscalateAnomalyStatus(status: string): boolean {
+  return ['open', 'acknowledged', 'assigned'].includes(status);
+}
+
 // ---- List anomalies ----
 export async function listAnomalies(params: {
   classroomId?: string;
@@ -88,7 +105,7 @@ export async function listAnomalies(params: {
   to?: string;
   page?: number;
   limit?: number;
-}) {
+}, requester?: AuthenticatedUser) {
   const {
     classroomId,
     status,
@@ -101,6 +118,7 @@ export async function listAnomalies(params: {
   } = params;
 
   const where: Record<string, unknown> = {};
+  if (requester?.campusId) where.campusId = requester.campusId;
   if (classroomId) where.classroomId = classroomId;
   if (type) where.type = type;
   if (status) {
@@ -145,9 +163,12 @@ export async function listAnomalies(params: {
 }
 
 // ---- Get anomaly by id ----
-export async function getAnomalyById(id: string) {
-  const anomaly = await prisma.anomalyEvent.findUnique({
-    where: { id },
+export async function getAnomalyById(id: string, requester?: AuthenticatedUser) {
+  const anomaly = await prisma.anomalyEvent.findFirst({
+    where: {
+      id,
+      ...(requester?.campusId ? { campusId: requester.campusId } : {}),
+    },
     include: anomalyInclude,
   });
   if (!anomaly) return null;
@@ -158,10 +179,14 @@ export async function getAnomalyById(id: string) {
 export async function createAnomaly(
   data: z.infer<typeof createAnomalySchema>,
   actorId: string,
+  requester?: AuthenticatedUser,
 ) {
   const payload = createAnomalySchema.parse(data);
-  const classroom = await prisma.classroom.findUnique({
-    where: { id: payload.classroomId },
+  const classroom = await prisma.classroom.findFirst({
+    where: {
+      id: payload.classroomId,
+      ...(requester?.campusId ? { campusId: requester.campusId } : {}),
+    },
   });
   if (!classroom)
     throw Object.assign(new Error("Classroom not found"), {
@@ -170,6 +195,7 @@ export async function createAnomaly(
     });
 
   const createData: Prisma.AnomalyEventUncheckedCreateInput = {
+    campusId: classroom.campusId,
     classroomId: payload.classroomId,
     type: payload.type,
     description: payload.description,
@@ -190,9 +216,10 @@ export async function createAnomaly(
     },
   });
 
-  emitToNamespace("/classroom", "anomaly:created", {
+  emitToCampusNamespace("/classroom", classroom.campusId, "anomaly:created", {
     anomalyId: anomaly.id,
     classroomId: anomaly.classroomId,
+    campusId: classroom.campusId,
     type: anomaly.type,
     status: anomaly.status,
   });
@@ -208,14 +235,19 @@ export async function createAnomaly(
 }
 
 // ---- Acknowledge: open → acknowledged ----
-export async function acknowledgeAnomaly(id: string, actorId: string) {
-  const anomaly = await prisma.anomalyEvent.findUnique({ where: { id } });
+export async function acknowledgeAnomaly(id: string, actorId: string, requester?: AuthenticatedUser) {
+  const anomaly = await prisma.anomalyEvent.findFirst({
+    where: {
+      id,
+      ...(requester?.campusId ? { campusId: requester.campusId } : {}),
+    },
+  });
   if (!anomaly)
     throw Object.assign(new Error("Anomaly not found"), {
       status: 404,
       code: "NOT_FOUND",
     });
-  if (anomaly.status !== "open") {
+  if (!canAcknowledgeAnomalyStatus(anomaly.status)) {
     throw Object.assign(
       new Error(`Cannot acknowledge anomaly in status '${anomaly.status}'`),
       { status: 409, code: "INVALID_TRANSITION" },
@@ -236,8 +268,9 @@ export async function acknowledgeAnomaly(id: string, actorId: string) {
     data: { anomalyId: id, actorId, action: "acknowledged" },
   });
 
-  emitToNamespace("/classroom", "anomaly:updated", {
+  emitToCampusNamespace("/classroom", anomaly.campusId, "anomaly:updated", {
     anomalyId: id,
+    campusId: anomaly.campusId,
     status: "acknowledged",
     actorId,
   });
@@ -257,14 +290,20 @@ export async function assignAnomaly(
   id: string,
   data: z.infer<typeof assignAnomalySchema>,
   actorId: string,
+  requester?: AuthenticatedUser,
 ) {
-  const anomaly = await prisma.anomalyEvent.findUnique({ where: { id } });
+  const anomaly = await prisma.anomalyEvent.findFirst({
+    where: {
+      id,
+      ...(requester?.campusId ? { campusId: requester.campusId } : {}),
+    },
+  });
   if (!anomaly)
     throw Object.assign(new Error("Anomaly not found"), {
       status: 404,
       code: "NOT_FOUND",
     });
-  if (anomaly.status !== "acknowledged") {
+  if (!canAssignAnomalyStatus(anomaly.status)) {
     throw Object.assign(
       new Error(`Cannot assign anomaly in status '${anomaly.status}'`),
       { status: 409, code: "INVALID_TRANSITION" },
@@ -299,8 +338,9 @@ export async function assignAnomaly(
     },
   });
 
-  emitToNamespace("/classroom", "anomaly:updated", {
+  emitToCampusNamespace("/classroom", anomaly.campusId, "anomaly:updated", {
     anomalyId: id,
+    campusId: anomaly.campusId,
     status: "assigned",
     assignedToId: data.assignedToId,
     actorId,
@@ -317,14 +357,20 @@ export async function resolveAnomaly(
   id: string,
   data: z.infer<typeof resolveAnomalySchema>,
   actorId: string,
+  requester?: AuthenticatedUser,
 ) {
-  const anomaly = await prisma.anomalyEvent.findUnique({ where: { id } });
+  const anomaly = await prisma.anomalyEvent.findFirst({
+    where: {
+      id,
+      ...(requester?.campusId ? { campusId: requester.campusId } : {}),
+    },
+  });
   if (!anomaly)
     throw Object.assign(new Error("Anomaly not found"), {
       status: 404,
       code: "NOT_FOUND",
     });
-  if (anomaly.status !== "assigned") {
+  if (!canResolveAnomalyStatus(anomaly.status)) {
     throw Object.assign(
       new Error(`Cannot resolve anomaly in status '${anomaly.status}'`),
       { status: 409, code: "INVALID_TRANSITION" },
@@ -351,8 +397,9 @@ export async function resolveAnomaly(
     },
   });
 
-  emitToNamespace("/classroom", "anomaly:updated", {
+  emitToCampusNamespace("/classroom", anomaly.campusId, "anomaly:updated", {
     anomalyId: id,
+    campusId: anomaly.campusId,
     status: "resolved",
     actorId,
   });
@@ -368,14 +415,20 @@ export async function escalateAnomaly(
   id: string,
   data: z.infer<typeof escalateAnomalySchema>,
   actorId: string,
+  requester?: AuthenticatedUser,
 ) {
-  const anomaly = await prisma.anomalyEvent.findUnique({ where: { id } });
+  const anomaly = await prisma.anomalyEvent.findFirst({
+    where: {
+      id,
+      ...(requester?.campusId ? { campusId: requester.campusId } : {}),
+    },
+  });
   if (!anomaly)
     throw Object.assign(new Error("Anomaly not found"), {
       status: 404,
       code: "NOT_FOUND",
     });
-  if (!["open", "acknowledged", "assigned"].includes(anomaly.status)) {
+  if (!canEscalateAnomalyStatus(anomaly.status)) {
     throw Object.assign(
       new Error(`Cannot escalate anomaly in status '${anomaly.status}'`),
       { status: 409, code: "INVALID_TRANSITION" },
@@ -400,14 +453,16 @@ export async function escalateAnomaly(
     },
   });
 
-  emitToNamespace("/classroom", "anomaly:updated", {
+  emitToCampusNamespace("/classroom", anomaly.campusId, "anomaly:updated", {
     anomalyId: id,
+    campusId: anomaly.campusId,
     status: "escalated",
     actorId,
   });
-  emitToNamespace("/supervisor-queue", "anomaly:escalated", {
+  emitToCampusNamespace("/supervisor-queue", anomaly.campusId, "anomaly:escalated", {
     anomalyId: id,
     classroomId: anomaly.classroomId,
+    campusId: anomaly.campusId,
     type: anomaly.type,
     at: new Date().toISOString(),
   });
@@ -429,7 +484,7 @@ export async function escalateStaleAnomalies(): Promise<number> {
       status: { in: ["open", "acknowledged"] },
       createdAt: { lt: threshold },
     },
-    select: { id: true, classroomId: true, type: true },
+    select: { id: true, campusId: true, classroomId: true, type: true },
   });
 
   for (const anomaly of stale) {
@@ -447,13 +502,15 @@ export async function escalateStaleAnomalies(): Promise<number> {
       },
     });
 
-    emitToNamespace("/classroom", "anomaly:updated", {
+    emitToCampusNamespace("/classroom", anomaly.campusId, "anomaly:updated", {
       anomalyId: anomaly.id,
+      campusId: anomaly.campusId,
       status: "escalated",
     });
-    emitToNamespace("/supervisor-queue", "anomaly:escalated", {
+    emitToCampusNamespace("/supervisor-queue", anomaly.campusId, "anomaly:escalated", {
       anomalyId: anomaly.id,
       classroomId: anomaly.classroomId,
+      campusId: anomaly.campusId,
       type: anomaly.type,
       auto: true,
       at: new Date().toISOString(),

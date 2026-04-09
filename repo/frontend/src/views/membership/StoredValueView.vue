@@ -179,12 +179,11 @@
       width="520px"
     >
       <div v-loading="receiptLoading">
-        <div
+        <pre
           v-if="receiptContent"
           id="printable-receipt"
-          class="receipt-content"
-          v-html="receiptContent"
-        />
+          class="receipt-content receipt-pre"
+        >{{ receiptContent }}</pre>
         <el-empty
           v-else-if="!receiptLoading"
           description="Receipt not available"
@@ -446,6 +445,13 @@ function formatAmountCell(
   border-radius: 4px;
   background: #fff;
   min-height: 120px;
+}
+
+.receipt-pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: Consolas, "Courier New", monospace;
 }
 </style>
 

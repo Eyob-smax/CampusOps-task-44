@@ -7,6 +7,7 @@ import {
   uploadMasterDataImportFile,
   importSemestersHandler,
 } from './master-import.controller';
+import { idempotency } from '../../middleware/idempotency.middleware';
 
 const router = Router();
 
@@ -15,9 +16,9 @@ router.use(denyAuditorWrites());
 
 router.get('/',        requirePermission('master-data:read'), getSemesters);
 router.get('/export',  requirePermission('master-data:read'), exportSemestersHandler);
-router.post('/import', requirePermission('master-data:write'), uploadMasterDataImportFile, importSemestersHandler);
+router.post('/import', requirePermission('master-data:write'), idempotency, uploadMasterDataImportFile, importSemestersHandler);
 router.get('/:id',     requirePermission('master-data:read'), getSemester);
-router.post('/',   requirePermission('master-data:write'), createSemesterHandler);
-router.put('/:id', requirePermission('master-data:write'), updateSemesterHandler);
+router.post('/',   requirePermission('master-data:write'), idempotency, createSemesterHandler);
+router.put('/:id', requirePermission('master-data:write'), idempotency, updateSemesterHandler);
 
 export default router;

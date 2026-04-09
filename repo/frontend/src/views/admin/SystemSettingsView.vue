@@ -139,10 +139,11 @@
         </el-form-item>
         <el-form-item label="Operator">
           <el-select v-model="thresholdForm.operator" style="width:100%">
-            <el-option label="Greater than (gt)"           value="gt" />
-            <el-option label="Less than (lt)"              value="lt" />
-            <el-option label="Greater than or equal (gte)" value="gte" />
-            <el-option label="Less than or equal (lte)"    value="lte" />
+            <el-option label="Greater than (>)" value=">" />
+            <el-option label="Less than (<)" value="<" />
+            <el-option label="Greater than or equal (>=)" value=">=" />
+            <el-option label="Less than or equal (<=)" value="<=" />
+            <el-option label="Equal to (==)" value="==" />
           </el-select>
         </el-form-item>
         <el-form-item label="Threshold Value">
@@ -244,7 +245,7 @@ async function saveSettings() {
 const loadingThresholds = ref(false);
 const thresholds        = ref<AlertThreshold[]>([]);
 const thresholdVisible  = ref(false);
-const thresholdForm     = reactive({ metricName: '', operator: 'gt', value: 0, isActive: true });
+const thresholdForm     = reactive({ metricName: '', operator: '>', value: 0, isActive: true });
 
 async function loadThresholds() {
   loadingThresholds.value = true;
@@ -255,7 +256,7 @@ async function loadThresholds() {
 }
 
 function openThresholdDialog(t?: AlertThreshold) {
-  Object.assign(thresholdForm, t ?? { metricName: '', operator: 'gt', value: 0, isActive: true });
+  Object.assign(thresholdForm, t ?? { metricName: '', operator: '>', value: 0, isActive: true });
   thresholdVisible.value = true;
 }
 

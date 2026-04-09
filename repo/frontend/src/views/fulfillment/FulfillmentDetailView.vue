@@ -85,7 +85,6 @@ const loading = ref(false);
 const transitionLoading = ref<string | null>(null);
 
 const TRANSITIONS: Record<string, FulfillmentStatus[]> = {
-  draft:      ['pending', 'cancelled'],
   pending:    ['processing', 'cancelled'],
   processing: ['shipped', 'cancelled'],
   shipped:    ['delivered', 'cancelled'],
@@ -126,7 +125,7 @@ async function doTransition(status: FulfillmentStatus) {
 function capitalize(s: string) { return s.charAt(0).toUpperCase() + s.slice(1); }
 function statusTagType(s: string): '' | 'success' | 'warning' | 'danger' | 'info' {
   const map: Record<string, '' | 'success' | 'warning' | 'danger' | 'info'> = {
-    draft: 'info', pending: '', processing: 'warning',
+    pending: '', processing: 'warning',
     shipped: 'warning', delivered: 'success', cancelled: 'danger',
   };
   return map[s] ?? 'info';

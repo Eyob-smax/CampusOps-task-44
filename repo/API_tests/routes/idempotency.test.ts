@@ -20,11 +20,18 @@ describe('Idempotency key enforcement — all mutating routes', () => {
   const mutatingRoutes: { method: string; path: string; token: () => string; body?: object }[] = [
     // Admin users
     { method: 'POST', path: '/api/admin/users', token: () => adminToken, body: { username: 'test', password: 'Test@12345!', role: 'auditor' } },
+    { method: 'PATCH', path: `/api/admin/users/${validUuid}`, token: () => adminToken, body: { username: 'updated-user' } },
+    { method: 'POST', path: `/api/admin/users/${validUuid}/reset-password`, token: () => adminToken, body: { newPassword: 'Test@12345!' } },
+    // Admin settings
+    { method: 'PATCH', path: '/api/admin/settings', token: () => adminToken, body: { appName: 'CampusOps' } },
+    { method: 'PUT', path: '/api/admin/settings/thresholds', token: () => adminToken, body: { cpuWarning: 80 } },
+    { method: 'POST', path: '/api/admin/settings/keys', token: () => adminToken, body: { name: `test-key-${Date.now()}`, scope: 'parking' } },
+    { method: 'POST', path: `/api/admin/settings/keys/${validUuid}/rotate`, token: () => adminToken, body: {} },
     // Warehouses
     { method: 'POST', path: '/api/warehouses', token: () => adminToken, body: { name: 'Test WH', address: '123 St' } },
     { method: 'PUT', path: `/api/warehouses/${validUuid}`, token: () => adminToken, body: { name: 'Updated', address: '456 St' } },
     // Carriers
-    { method: 'POST', path: '/api/carriers', token: () => adminToken, body: { name: 'TestCarrier', code: 'TC' } },
+    { method: 'POST', path: '/api/carriers', token: () => adminToken, body: { name: 'TestCarrier', connectorUrl: 'http://carrier.local', apiKey: 'test-api-key' } },
     { method: 'PUT', path: `/api/carriers/${validUuid}`, token: () => adminToken, body: { name: 'Updated' } },
     // Delivery zones
     { method: 'POST', path: '/api/delivery-zones', token: () => adminToken, body: { name: 'Test Zone', regionCode: 'TZ' } },
@@ -40,6 +47,8 @@ describe('Idempotency key enforcement — all mutating routes', () => {
     { method: 'PUT', path: `/api/coupons/${validUuid}`, token: () => adminToken, body: { discountValue: 10 } },
     // Fulfillment
     { method: 'POST', path: '/api/fulfillment', token: () => adminToken, body: { studentId: validUuid, items: [{ description: 'Book', quantity: 1, unitPrice: 25 }] } },
+    { method: 'PATCH', path: `/api/fulfillment/${validUuid}/status`, token: () => adminToken, body: { status: 'processing' } },
+    { method: 'PATCH', path: `/api/fulfillment/${validUuid}/cancel`, token: () => adminToken, body: {} },
     // Shipments
     { method: 'POST', path: '/api/shipments', token: () => adminToken, body: { fulfillmentRequestId: validUuid, carrierId: validUuid } },
     { method: 'PATCH', path: `/api/shipments/${validUuid}/status`, token: () => adminToken, body: { status: 'in_transit' } },
@@ -48,19 +57,52 @@ describe('Idempotency key enforcement — all mutating routes', () => {
     // After-sales
     { method: 'POST', path: '/api/after-sales', token: () => adminToken, body: { studentId: validUuid, type: 'delay', description: 'Package late' } },
     { method: 'PATCH', path: `/api/after-sales/${validUuid}/status`, token: () => adminToken, body: { status: 'closed' } },
+    { method: 'POST', path: `/api/after-sales/${validUuid}/compensations/suggest`, token: () => adminToken, body: { amount: 10, reason: 'policy' } },
+    { method: 'PATCH', path: `/api/after-sales/${validUuid}/compensations/${validUuid}/approve`, token: () => adminToken, body: { note: 'approved' } },
+    { method: 'PATCH', path: `/api/after-sales/${validUuid}/compensations/${validUuid}/reject`, token: () => adminToken, body: { note: 'rejected' } },
+    // Classroom anomalies
+    { method: 'POST', path: '/api/anomalies', token: () => adminToken, body: { classroomId: validUuid, type: 'device_offline', description: 'Device heartbeat missing' } },
+    { method: 'PATCH', path: `/api/anomalies/${validUuid}/acknowledge`, token: () => adminToken, body: {} },
+    { method: 'PATCH', path: `/api/anomalies/${validUuid}/assign`, token: () => adminToken, body: { assigneeId: validUuid } },
+    { method: 'PATCH', path: `/api/anomalies/${validUuid}/resolve`, token: () => adminToken, body: { resolutionNote: 'Resolved in test' } },
+    { method: 'PATCH', path: `/api/anomalies/${validUuid}/escalate`, token: () => adminToken, body: { reason: 'Escalation test' } },
+    // Parking alerts
+    { method: 'POST', path: '/api/parking-alerts', token: () => adminToken, body: { lotId: validUuid, type: 'overtime', description: 'Overtime vehicle' } },
+    { method: 'PATCH', path: `/api/parking-alerts/${validUuid}/claim`, token: () => adminToken, body: {} },
+    { method: 'PATCH', path: `/api/parking-alerts/${validUuid}/close`, token: () => adminToken, body: { note: 'Closed in test' } },
+    { method: 'PATCH', path: `/api/parking-alerts/${validUuid}/escalate`, token: () => adminToken, body: { reason: 'Escalation test' } },
     // Stored value
     { method: 'POST', path: '/api/stored-value/some-student/top-up', token: () => adminToken, body: { amount: 50 } },
     { method: 'POST', path: '/api/stored-value/some-student/spend', token: () => adminToken, body: { amount: 10, description: 'test' } },
     // Thresholds
     { method: 'POST', path: '/api/thresholds', token: () => adminToken, body: { metricName: 'test', operator: 'gt', value: 90 } },
     { method: 'PUT', path: `/api/thresholds/${validUuid}`, token: () => adminToken, body: { value: 95 } },
+    // Alerts
+    { method: 'PATCH', path: `/api/alerts/${validUuid}/acknowledge`, token: () => adminToken, body: {} },
     // Backups
     { method: 'POST', path: '/api/backups', token: () => adminToken },
     { method: 'POST', path: `/api/backups/${validUuid}/verify`, token: () => adminToken },
     // Jobs retry
     { method: 'POST', path: '/api/jobs/some-id/retry', token: () => adminToken },
+    // Master-data departments
+    { method: 'POST', path: '/api/departments/import', token: () => adminToken },
+    { method: 'POST', path: '/api/departments', token: () => adminToken, body: { name: 'Dept Test', code: 'DPT' } },
+    { method: 'PUT', path: `/api/departments/${validUuid}`, token: () => adminToken, body: { name: 'Dept Updated' } },
+    // Master-data semesters
+    { method: 'POST', path: '/api/semesters/import', token: () => adminToken },
+    { method: 'POST', path: '/api/semesters', token: () => adminToken, body: { name: '2026 Spring', startDate: '2026-01-01', endDate: '2026-05-31' } },
+    { method: 'PUT', path: `/api/semesters/${validUuid}`, token: () => adminToken, body: { name: '2026 Fall' } },
+    // Master-data courses
+    { method: 'POST', path: '/api/courses/import', token: () => adminToken },
+    { method: 'POST', path: '/api/courses', token: () => adminToken, body: { code: 'CRS101', name: 'Course Test', departmentId: validUuid } },
+    { method: 'PUT', path: `/api/courses/${validUuid}`, token: () => adminToken, body: { name: 'Course Updated' } },
+    // Master-data classes
+    { method: 'POST', path: '/api/classes/import', token: () => adminToken },
+    { method: 'POST', path: '/api/classes', token: () => adminToken, body: { name: 'Class A', courseId: validUuid, departmentId: validUuid, semesterId: validUuid } },
+    { method: 'PUT', path: `/api/classes/${validUuid}`, token: () => adminToken, body: { name: 'Class B' } },
     // Students
     { method: 'POST', path: '/api/students', token: () => adminToken, body: { studentNumber: 'S999', fullName: 'Test', email: 'test@test.edu' } },
+    { method: 'PUT', path: `/api/students/${validUuid}`, token: () => adminToken, body: { fullName: 'Updated Student' } },
   ];
 
   mutatingRoutes.forEach(({ method, path, token, body }) => {
@@ -105,5 +147,116 @@ describe('Idempotency key format validation', () => {
       .send({ name, address: '123 Valid St' });
     // Should not be 400 for idempotency — either 200/201 (created) or another error
     expect(res.status).not.toBe(400);
+  });
+});
+
+describe('Idempotency namespace isolation and replay semantics', () => {
+  it('does not collide when same key is used on different endpoints', async () => {
+    const token = await loginAs('admin');
+    const sameKey = uuid();
+    const warehouseName = `WH-COLLISION-${Date.now().toString(36)}`;
+    const carrierName = `Carrier-COLLISION-${Date.now().toString(36)}`;
+
+    const warehouseRes = await request(app)
+      .post('/api/warehouses')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Idempotency-Key', sameKey)
+      .send({ name: warehouseName, address: '100 Main St' });
+
+    expect(warehouseRes.status).toBe(201);
+    expect(warehouseRes.body.success).toBe(true);
+    expect(warehouseRes.body.data.name).toBe(warehouseName);
+
+    const carrierRes = await request(app)
+      .post('/api/carriers')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Idempotency-Key', sameKey)
+      .send({
+        name: carrierName,
+        connectorUrl: 'http://carrier.local',
+        apiKey: 'carrier-secret-key',
+      });
+
+    expect(carrierRes.status).toBe(201);
+    expect(carrierRes.body.name).toBe(carrierName);
+  });
+
+  it('does not collide when same key is used on same endpoint with different payload', async () => {
+    const token = await loginAs('admin');
+    const sameKey = uuid();
+    const nameA = `WH-SAME-ENDPOINT-A-${Date.now().toString(36)}`;
+    const nameB = `WH-SAME-ENDPOINT-B-${Date.now().toString(36)}`;
+
+    const resA = await request(app)
+      .post('/api/warehouses')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Idempotency-Key', sameKey)
+      .send({ name: nameA, address: '10 A St' });
+
+    const resB = await request(app)
+      .post('/api/warehouses')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Idempotency-Key', sameKey)
+      .send({ name: nameB, address: '20 B St' });
+
+    expect(resA.status).toBe(201);
+    expect(resB.status).toBe(201);
+    expect(resA.body.data.name).toBe(nameA);
+    expect(resB.body.data.name).toBe(nameB);
+  });
+
+  it('replays cached response when request method/path/body/key are identical', async () => {
+    const token = await loginAs('admin');
+    const sameKey = uuid();
+    const name = `WH-REPLAY-${Date.now().toString(36)}`;
+    const payload = { name, address: '99 Replay Ln' };
+
+    const first = await request(app)
+      .post('/api/warehouses')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Idempotency-Key', sameKey)
+      .send(payload);
+
+    const second = await request(app)
+      .post('/api/warehouses')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Idempotency-Key', sameKey)
+      .send(payload);
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(second.body).toEqual(first.body);
+  });
+
+  it('handles concurrent duplicate requests with a single effective write', async () => {
+    const token = await loginAs('admin');
+    const sameKey = uuid();
+    const payload = {
+      name: `WH-CONCURRENT-${Date.now().toString(36)}`,
+      address: '1 Concurrency Way',
+    };
+
+    const sendRequest = () => request(app)
+      .post('/api/warehouses')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Idempotency-Key', sameKey)
+      .send(payload);
+
+    const [first, second] = await Promise.all([sendRequest(), sendRequest()]);
+    const successes = [first, second].filter((res) => res.status === 201);
+
+    expect(successes.length).toBeGreaterThanOrEqual(1);
+    if (successes.length === 2) {
+      expect(successes[0].body).toEqual(successes[1].body);
+    }
+
+    const inProgress = [first, second].find((res) => res.status === 409);
+    if (inProgress) {
+      expect(inProgress.body.code).toBe('IDEMPOTENCY_IN_PROGRESS');
+    }
+
+    const replay = await sendRequest();
+    expect(replay.status).toBe(201);
+    expect(replay.body).toEqual(successes[0].body);
   });
 });

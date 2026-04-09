@@ -16,6 +16,7 @@ import {
   uploadMasterDataImportFile,
   importDepartmentsHandler,
 } from "./master-import.controller";
+import { idempotency } from "../../middleware/idempotency.middleware";
 
 const router = Router();
 
@@ -31,6 +32,7 @@ router.get(
 router.post(
   "/import",
   requirePermission("master-data:write"),
+  idempotency,
   uploadMasterDataImportFile,
   importDepartmentsHandler,
 );
@@ -38,11 +40,13 @@ router.get("/:id", requirePermission("master-data:read"), getDepartment);
 router.post(
   "/",
   requirePermission("master-data:write"),
+  idempotency,
   createDepartmentHandler,
 );
 router.put(
   "/:id",
   requirePermission("master-data:write"),
+  idempotency,
   updateDepartmentHandler,
 );
 router.delete(

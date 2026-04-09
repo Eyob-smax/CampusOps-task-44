@@ -194,7 +194,7 @@
       </template>
     </el-dialog>
 
-    <!-- Resolve dialog (required note ≥ 10 chars) -->
+    <!-- Resolve dialog (required note >= 20 chars) -->
     <el-dialog v-model="resolveDialogOpen" title="Resolve Anomaly" width="480px">
       <el-form label-position="top" @submit.prevent>
         <el-form-item
@@ -206,11 +206,11 @@
             v-model="resolveNote"
             type="textarea"
             :rows="4"
-            placeholder="Describe how the anomaly was resolved (min 10 characters)…"
+            placeholder="Describe how the anomaly was resolved (min 20 characters)..."
             @input="validateResolveNote"
           />
           <div style="text-align:right;font-size:11px;color:#909399;margin-top:4px">
-            {{ resolveNote.length }} / 10 min
+            {{ resolveNote.length }} / 20 min
           </div>
         </el-form-item>
       </el-form>
@@ -219,7 +219,7 @@
         <el-button
           type="success"
           :loading="dialogLoading"
-          :disabled="resolveNote.length < 10"
+          :disabled="resolveNote.length < 20"
           @click="confirmResolve"
         >Resolve</el-button>
       </template>
@@ -392,15 +392,15 @@ function openResolveDialog(row: Anomaly) {
 
 function validateResolveNote() {
   resolveNoteError.value =
-    resolveNote.value.length > 0 && resolveNote.value.length < 10
-      ? `${10 - resolveNote.value.length} more character(s) required`
+    resolveNote.value.length > 0 && resolveNote.value.length < 20
+      ? `${20 - resolveNote.value.length} more character(s) required`
       : '';
 }
 
 async function confirmResolve() {
   if (!resolveTarget.value) return;
-  if (resolveNote.value.length < 10) {
-    resolveNoteError.value = 'Resolution note must be at least 10 characters';
+  if (resolveNote.value.length < 20) {
+    resolveNoteError.value = 'Resolution note must be at least 20 characters';
     return;
   }
   dialogLoading.value = true;

@@ -2,6 +2,8 @@ import os from 'os';
 import { prisma } from '../../lib/prisma';
 import { emitToNamespace } from '../../lib/socket';
 import { logger } from '../../lib/logger';
+import { normalizeThresholdOperator } from './threshold-operator';
+import { getRequestMetricsSnapshot } from './request-metrics.store';
 
 // ---------------------------------------------------------------------------
 // Core helpers
@@ -73,6 +75,26 @@ export async function collectSystemMetrics(): Promise<void> {
   const cpuLoad = (os.loadavg()[0] / os.cpus().length) * 100;
   await recordMetric('cpu_utilization_percent', parseFloat(cpuLoad.toFixed(2)));
 
+  // API quality metrics (rolling 15-minute window)
+  const requestSnapshot = getRequestMetricsSnapshot();
+  await recordMetric(
+    'api_latency_p95_ms',
+    parseFloat(requestSnapshot.p95LatencyMs.toFixed(2)),
+    {
+      windowMinutes: '15',
+      sampleCount: String(requestSnapshot.sampleCount),
+    },
+  );
+  await recordMetric(
+    'api_error_rate_percent',
+    parseFloat(requestSnapshot.errorRatePercent.toFixed(2)),
+    {
+      windowMinutes: '15',
+      sampleCount: String(requestSnapshot.sampleCount),
+      errorCount: String(requestSnapshot.errorCount),
+    },
+  );
+
   // memory metrics
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
@@ -135,7 +157,8 @@ export async function checkThresholds(): Promise<number> {
     if (!breached) continue;
 
     breachCount++;
-    const message = `Metric "${threshold.metricName}" value ${current} ${threshold.operator} threshold ${threshold.value}`;
+    const canonicalOperator = normalizeThresholdOperator(threshold.operator) ?? threshold.operator;
+    const message = `Metric "${threshold.metricName}" value ${current} ${canonicalOperator} threshold ${threshold.value}`;
 
     await prisma.alertHistory.create({
       data: {
@@ -148,7 +171,9 @@ export async function checkThresholds(): Promise<number> {
     });
 
     emitToNamespace('/alerts', 'alert:threshold-breach', {
+      metric: threshold.metricName,
       metricName: threshold.metricName,
+      operator: canonicalOperator,
       value: current,
       threshold: threshold.value,
       message,
@@ -161,7 +186,8 @@ export async function checkThresholds(): Promise<number> {
 }
 
 function evaluateOperator(current: number, operator: string, threshold: number): boolean {
-  switch (operator) {
+  const normalized = normalizeThresholdOperator(operator);
+  switch (normalized) {
     case '>':  return current > threshold;
     case '<':  return current < threshold;
     case '>=': return current >= threshold;

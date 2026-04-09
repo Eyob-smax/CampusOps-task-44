@@ -31,9 +31,6 @@ ENV DB_HOST=db
 ENV DB_PORT=3306
 ENV DB_NAME=campusops
 ENV DB_USER=campusops
-ENV DB_PASSWORD=CHANGE_ME_DB_PASSWORD
-ENV JWT_SECRET=CHANGE_ME_JWT_SECRET
-ENV ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000000000000000
 ENV REDIS_URL=redis://redis:6379
 ENV STORAGE_PATH=/data/storage
 ENV LOG_PATH=/logs
@@ -41,16 +38,12 @@ ENV BACKUP_PATH=/backups
 ENV LOG_LEVEL=info
 ENV PRISMA_QUERY_ENGINE_LIBRARY=/app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
 ENV TZ=America/New_York
-ENV SEED_ADMIN_PASSWORD=CHANGE_ME_ADMIN_PASSWORD
-ENV SEED_OPS_MANAGER_PASSWORD=CHANGE_ME_OPS_PASSWORD
-ENV SEED_SUPERVISOR_PASSWORD=CHANGE_ME_SUPERVISOR_PASSWORD
-ENV SEED_CS_AGENT_PASSWORD=CHANGE_ME_CS_PASSWORD
-ENV SEED_AUDITOR_PASSWORD=CHANGE_ME_AUDITOR_PASSWORD
 
 # Copy built app and production deps
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/database ./database
 COPY package*.json ./
 
 # Copy entrypoint (handles secret → DATABASE_URL)

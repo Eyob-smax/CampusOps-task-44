@@ -12,6 +12,11 @@ import {
   createStudentSchema,
   updateStudentSchema,
 } from "./student.service";
+import {
+  csvToXlsxBuffer,
+  resolveMasterDataExportFormat,
+  XLSX_CONTENT_TYPE,
+} from "./export-format";
 import { importQueue } from "../../jobs/index";
 import { createJobRecord, getJobByIdempotencyKey } from "../jobs/job.service";
 import { config } from "../../config";
@@ -46,6 +51,7 @@ export async function getStudents(
         limit: req.query["limit"] ? Number(req.query["limit"]) : undefined,
       },
       req.user!.role,
+      req.user,
     );
     res.json({ success: true, ...result });
   } catch (err) {
@@ -59,7 +65,7 @@ export async function getStudent(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const student = await getStudentById(req.params.id, req.user!.role);
+    const student = await getStudentById(req.params.id, req.user!.role, req.user);
     if (!student) {
       res
         .status(404)
@@ -83,7 +89,7 @@ export async function createStudentHandler(
 ): Promise<void> {
   try {
     const dto = createStudentSchema.parse(req.body);
-    const student = await createStudent(dto, req.user!.id, req.user!.role);
+    const student = await createStudent(dto, req.user!.id, req.user!.role, req.user);
     res.status(201).json({ success: true, data: student });
   } catch (err) {
     next(err);
@@ -102,6 +108,7 @@ export async function updateStudentHandler(
       dto,
       req.user!.id,
       req.user!.role,
+      req.user,
     );
     res.json({ success: true, data: student });
   } catch (err) {
@@ -115,7 +122,7 @@ export async function deactivateStudentHandler(
   next: NextFunction,
 ): Promise<void> {
   try {
-    await deactivateStudent(req.params.id, req.user!.id);
+    await deactivateStudent(req.params.id, req.user!.id, req.user);
     res.json({ success: true, message: "Student deactivated" });
   } catch (err) {
     next(err);
@@ -176,6 +183,7 @@ export async function importStudentsHandler(
       queueName: "campusops-bulk-import",
       jobName: "student-import",
       actorId: req.user!.id,
+      campusId: req.user?.campusId,
       idempotencyKey,
       inputFilename: req.file.originalname,
     });
@@ -188,6 +196,7 @@ export async function importStudentsHandler(
       jobRecordId: jobRecord.id,
       filePath,
       actorId: req.user!.id,
+      campusId: req.user?.campusId,
     });
 
     // Update record with BullMQ job ID
@@ -216,7 +225,28 @@ export async function exportStudentsHandler(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const csv = await exportStudentsCsv(req.user!.role);
+    const format = resolveMasterDataExportFormat(req.query["format"]);
+    if (!format) {
+      res.status(400).json({
+        success: false,
+        error: "format must be one of: csv, xlsx",
+        code: "INVALID_EXPORT_FORMAT",
+      });
+      return;
+    }
+
+    const csv = await exportStudentsCsv(req.user!.role, req.user);
+    if (format === "xlsx") {
+      const xlsx = csvToXlsxBuffer(csv);
+      res.setHeader("Content-Type", XLSX_CONTENT_TYPE);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="students-${Date.now()}.xlsx"`,
+      );
+      res.send(xlsx);
+      return;
+    }
+
     res.setHeader("Content-Type", "text/csv");
     res.setHeader(
       "Content-Disposition",

@@ -1,0 +1,91 @@
+{
+  "id": "bugfix-5",
+  "title": "Security binding hardening, fulfillment lifecycle alignment, and audit-driven coverage upgrades",
+  "severity": "critical",
+  "status": "resolved",
+  "dateFound": "2026-04-07",
+  "dateResolved": "2026-04-07",
+  "affectedFiles": [
+    "repo/backend/src/middleware/auth.middleware.ts",
+    "repo/backend/src/modules/after-sales/after-sales.routes.ts",
+    "repo/backend/src/modules/after-sales/compensation.controller.ts",
+    "repo/backend/src/modules/after-sales/compensation.service.ts",
+    "repo/backend/src/modules/fulfillment/fulfillment.service.ts",
+    "repo/backend/prisma/schema.prisma",
+    "repo/backend/database/schema.prisma",
+    "repo/backend/src/types/index.ts",
+    "repo/frontend/src/types/index.ts",
+    "repo/frontend/src/api/fulfillment.ts",
+    "repo/frontend/src/views/fulfillment/FulfillmentDetailView.vue",
+    "repo/frontend/src/views/fulfillment/FulfillmentListView.vue",
+    "repo/frontend/unit_tests/types.test.ts",
+    "repo/backend/src/modules/after-sales/after-sales.service.ts",
+    "repo/backend/src/modules/parking/alert.service.ts",
+    "repo/backend/src/modules/classroom/anomaly.service.ts",
+    "repo/backend/unit_tests/parking.test.ts",
+    "repo/backend/unit_tests/classroom.test.ts",
+    "repo/backend/unit_tests/shipment.test.ts",
+    "repo/backend/unit_tests/fulfillment.test.ts",
+    "repo/API_tests/routes/shipment.test.ts",
+    "repo/backend/src/middleware/error-handler.middleware.ts",
+    "repo/docs/acceptance-checklist.md",
+    "docs/api-spec.md",
+    "repo/docs/test-plan.md"
+  ],
+  "description": "Resolved all findings from the acceptance audit for this session: closed a blocker-level nested-resource authorization gap, aligned fulfillment lifecycle contracts across backend/frontend/schema/docs, replaced mirrored unit-test logic with production helper assertions, and added missing negative API tests for object-level binding and evidence validation.",
+  "errors": [
+    {
+      "file": "repo/backend/src/modules/after-sales/after-sales.routes.ts + compensation.controller.ts + compensation.service.ts",
+      "error": "Nested compensation approve/reject endpoints accepted mismatched parent ticket IDs (object-level binding gap)",
+      "cause": "Controller and service resolved compensations by child id only; route parent id was not enforced in lookup/update path.",
+      "fix": "Passed both `ticketId` and `compensationId` through controller to service, changed lookup to `(id, ticketId)` binding, and returned 404 for mismatched parent-child combinations."
+    },
+    {
+      "file": "repo/backend/src/modules/after-sales/after-sales.routes.ts + repo/backend/src/middleware/auth.middleware.ts + repo/backend/src/modules/after-sales/compensation.controller.ts",
+      "error": "Compensation approval tiering risked policy drift due to narrow route gate + role-hardcoded escalation",
+      "cause": "Approve/reject routes only enforced `compensation:approve-limited`, while controller escalation was role-name based.",
+      "fix": "Added `requireAnyPermission()` middleware, gated routes with limited/full/override scopes, and resolved approval level from permission matrix (`can(...)`) instead of hardcoded role names."
+    },
+    {
+      "file": "repo/backend/src/modules/fulfillment/fulfillment.service.ts + repo/backend/prisma/schema.prisma + repo/backend/database/schema.prisma + repo/frontend/src/** + docs/api-spec.md + repo/docs/acceptance-checklist.md",
+      "error": "Fulfillment status model inconsistency (draft default and stale lifecycle references)",
+      "cause": "Schema, service transitions, frontend status unions/views, and docs were not fully synchronized.",
+      "fix": "Standardized lifecycle to `pending -> processing -> shipped -> delivered/cancelled`, removed `draft` references where applicable, updated schemas/types/views/docs, and kept route/status behavior contract-aligned."
+    },
+    {
+      "file": "repo/backend/unit_tests/fulfillment.test.ts + repo/backend/unit_tests/parking.test.ts + repo/backend/unit_tests/classroom.test.ts + repo/backend/unit_tests/shipment.test.ts",
+      "error": "Unit tests contained mirrored local business logic patterns (false-confidence risk)",
+      "cause": "Several suites recreated transition/SLA/cap rules inline instead of validating exported production helpers.",
+      "fix": "Exported production helper functions/constants from services and refactored tests to call those helpers directly."
+    },
+    {
+      "file": "repo/API_tests/routes/shipment.test.ts + repo/backend/src/middleware/error-handler.middleware.ts",
+      "error": "Negative API coverage gaps for security and file-validation abuse paths",
+      "cause": "No explicit mismatch tests for ticket/compensation ID tampering and limited evidence-upload rejection coverage.",
+      "fix": "Added API tests for parent-child mismatch on approve/reject (expect 404), MIME-vs-magic mismatch (422), oversized uploads (413), and duplicate evidence detection (409); normalized Multer errors to deterministic API codes."
+    },
+    {
+      "file": "repo/backend/src/modules/after-sales/compensation.service.ts",
+      "error": "TypeScript compile regression during containerized rerun (`GLOBAL_CAP` unresolved)",
+      "cause": "Constant was renamed to `GLOBAL_COMPENSATION_CAP` but one default-rule reference remained stale.",
+      "fix": "Updated remaining reference to `GLOBAL_COMPENSATION_CAP`, restoring backend/API container builds."
+    }
+  ],
+  "rootCause": "Cross-layer drift between security intent, implementation details, test depth, and docs: nested-resource binding assumptions were not enforced in code/tests, and lifecycle contracts were partially synchronized across backend/frontend/schema/documentation.",
+  "impact": "Before fix, the system risked object-level authorization bypass on compensation endpoints, inconsistent fulfillment behavior across clients/docs, and weaker confidence from unit tests that mirrored logic rather than proving production paths.",
+  "validation": {
+    "method": "Dockerized test execution from PowerShell with isolated compose project names and cleanup",
+    "result": "All suites passed after remediation",
+    "summary": {
+      "frontendUnit": "PASS",
+      "frontendTests": 239,
+      "backendUnit": "PASS",
+      "backendTests": 496,
+      "apiFunctional": "PASS",
+      "apiSuites": 11,
+      "apiTests": 344,
+      "suitesPassed": 4,
+      "suitesFailed": 0
+    }
+  }
+}

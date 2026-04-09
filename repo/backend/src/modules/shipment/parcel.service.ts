@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { writeAuditEntry } from '../admin/audit.service';
 import { logger } from '../../lib/logger';
+import type { AuthenticatedUser } from '../../types';
 
 // ---- Zod schema ----
 
@@ -15,12 +16,30 @@ export const updateParcelStatusSchema = z.object({
   status: z.enum(['pending', 'in_transit', 'out_for_delivery', 'delivered', 'exception', 'returned']),
 });
 
+export function scopedShipmentWhere(requester?: AuthenticatedUser): Record<string, unknown> {
+  const where: Record<string, unknown> = {};
+
+  if (requester?.campusId) {
+    where['campusId'] = requester.campusId;
+  }
+
+  if (requester?.role === 'customer_service_agent') {
+    where['fulfillmentRequest'] = { createdById: requester.id };
+  }
+
+  return where;
+}
+
 // ---- Service functions ----
 
-export async function listParcels(shipmentId?: string) {
+export async function listParcels(shipmentId?: string, requester?: AuthenticatedUser) {
   if (shipmentId) {
-    // Validate shipment exists for scoped queries
-    const shipment = await prisma.shipment.findUnique({ where: { id: shipmentId } });
+    const shipment = await prisma.shipment.findFirst({
+      where: {
+        id: shipmentId,
+        ...scopedShipmentWhere(requester),
+      } as any,
+    });
     if (!shipment) {
       const err: any = new Error('Shipment not found');
       err.status = 404;
@@ -29,15 +48,27 @@ export async function listParcels(shipmentId?: string) {
     }
   }
 
+  const where: Record<string, unknown> = shipmentId ? { shipmentId } : {};
+  const shipmentScope = scopedShipmentWhere(requester);
+  if (Object.keys(shipmentScope).length > 0) {
+    where['shipment'] = shipmentScope;
+  }
+
   return prisma.parcel.findMany({
-    where: shipmentId ? { shipmentId } : undefined,
+    where: where as any,
     orderBy: { createdAt: 'asc' },
   });
 }
 
-export async function getParcelById(id: string) {
-  const parcel = await prisma.parcel.findUnique({
-    where:   { id },
+export async function getParcelById(id: string, requester?: AuthenticatedUser) {
+  const where: Record<string, unknown> = { id };
+  const shipmentScope = scopedShipmentWhere(requester);
+  if (Object.keys(shipmentScope).length > 0) {
+    where['shipment'] = shipmentScope;
+  }
+
+  const parcel = await prisma.parcel.findFirst({
+    where: where as any,
     include: { shipment: true, afterSalesTickets: true },
   });
   if (!parcel) {
@@ -53,9 +84,14 @@ export async function addParcel(
   shipmentId: string,
   data:       z.infer<typeof addParcelSchema>,
   actorId:    string,
+  requester?: AuthenticatedUser,
 ) {
-  // Validate shipment exists
-  const shipment = await prisma.shipment.findUnique({ where: { id: shipmentId } });
+  const shipment = await prisma.shipment.findFirst({
+    where: {
+      id: shipmentId,
+      ...scopedShipmentWhere(requester),
+    } as any,
+  });
   if (!shipment) {
     const err: any = new Error('Shipment not found');
     err.status = 404;
@@ -98,14 +134,9 @@ export async function updateParcelStatus(
   id:      string,
   status:  string,
   actorId: string,
+  requester?: AuthenticatedUser,
 ) {
-  const parcel = await prisma.parcel.findUnique({ where: { id } });
-  if (!parcel) {
-    const err: any = new Error('Parcel not found');
-    err.status = 404;
-    err.code   = 'PARCEL_NOT_FOUND';
-    throw err;
-  }
+  const parcel = await getParcelById(id, requester);
 
   const updated = await prisma.parcel.update({
     where: { id },

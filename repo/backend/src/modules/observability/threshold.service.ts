@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { writeAuditEntry } from '../admin/audit.service';
 import { logger } from '../../lib/logger';
+import { normalizeThresholdOperator } from './threshold-operator';
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -9,14 +10,37 @@ import { logger } from '../../lib/logger';
 
 export const createThresholdSchema = z.object({
   metricName: z.string().min(1),
-  operator: z.enum(['>', '<', '>=', '<=', '==']),
+  operator: z.string().transform((value, ctx) => {
+    const normalized = normalizeThresholdOperator(value);
+    if (!normalized) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'operator must be one of >, <, >=, <=, == (aliases gt/lt/gte/lte/eq are accepted)',
+      });
+      return z.NEVER;
+    }
+    return normalized;
+  }),
   value: z.number(),
   isActive: z.boolean().optional().default(true),
 });
 
 export const updateThresholdSchema = z.object({
   metricName: z.string().min(1).optional(),
-  operator: z.enum(['>', '<', '>=', '<='  , '==']).optional(),
+  operator: z
+    .string()
+    .transform((value, ctx) => {
+      const normalized = normalizeThresholdOperator(value);
+      if (!normalized) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'operator must be one of >, <, >=, <=, == (aliases gt/lt/gte/lte/eq are accepted)',
+        });
+        return z.NEVER;
+      }
+      return normalized;
+    })
+    .optional(),
   value: z.number().optional(),
   isActive: z.boolean().optional(),
 });

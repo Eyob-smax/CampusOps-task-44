@@ -48,25 +48,25 @@ the reason (missing/empty dump file, parse error, missing manifest keys).
 1. Stop all backend services to prevent writes during restore.
 
 ```bash
-pm2 stop campusops-api
+docker compose stop reverse-proxy frontend backend
 ```
 
 2. Restore the SQL dump:
 
 ```bash
-mysql -u <user> -p <database> < /path/to/backup_2026-03-30_030000.sql
+docker compose exec -T db sh -c 'mysql -u"$MYSQL_USER" -p"$(cat /run/secrets/db_password)" "$MYSQL_DATABASE"' < /path/to/backup_2026-03-30_030000.sql
 ```
 
 3. Restart backend services:
 
 ```bash
-pm2 start campusops-api
+docker compose up -d backend frontend reverse-proxy
 ```
 
 4. Verify the application is healthy:
 
 ```
-GET /api/health
+GET /health
 ```
 
 ---

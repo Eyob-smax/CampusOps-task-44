@@ -159,11 +159,7 @@ const router = createRouter({
           meta: {
             title: "Stored Value",
             requiresAuth: true,
-            roles: [
-              "administrator",
-              "operations_manager",
-              "customer_service_agent",
-            ],
+            roles: ["administrator", "operations_manager"],
           },
         },
 

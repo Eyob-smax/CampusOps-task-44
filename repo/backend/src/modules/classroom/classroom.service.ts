@@ -1,9 +1,10 @@
 import { ClassroomStatus } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
-import { emitToNamespace } from '../../lib/socket';
+import { emitToCampusNamespace } from '../../lib/socket';
 import { logger } from '../../lib/logger';
 import { config } from '../../config';
+import type { AuthenticatedUser } from '../../types';
 
 // ---- Validators ----
 export const heartbeatSchema = z.object({
@@ -17,6 +18,7 @@ export type HeartbeatData = z.infer<typeof heartbeatSchema>;
 export function serializeClassroom(c: Record<string, unknown>) {
   return {
     id:                    c.id,
+    campusId:              c.campusId,
     hardwareNodeId:        c.hardwareNodeId,
     status:                c.status,
     recognitionConfidence: c.recognitionConfidence,
@@ -51,10 +53,11 @@ export async function listClassrooms(params: {
   activeOnly?: boolean;
   page?: number;
   limit?: number;
-}) {
+}, requester?: AuthenticatedUser) {
   const { departmentId, status, search, activeOnly = true, page = 1, limit = 50 } = params;
 
   const where: Record<string, unknown> = {};
+  if (requester?.campusId) where.campusId = requester.campusId;
   if (activeOnly) where.isActive = true;
   if (status)     where.status = status;
   if (departmentId) {
@@ -93,9 +96,12 @@ export async function listClassrooms(params: {
 }
 
 // ---- Get classroom by id ----
-export async function getClassroomById(id: string) {
-  const classroom = await prisma.classroom.findUnique({
-    where: { id },
+export async function getClassroomById(id: string, requester?: AuthenticatedUser) {
+  const classroom = await prisma.classroom.findFirst({
+    where: {
+      id,
+      ...(requester?.campusId ? { campusId: requester.campusId } : {}),
+    },
     include: {
       ...classroomInclude,
       _count: { select: { anomalyEvents: { where: { status: { in: ['open', 'acknowledged', 'assigned'] } } } } },
@@ -114,13 +120,14 @@ export async function getClassroomById(id: string) {
 }
 
 // ---- Aggregate stats ----
-export async function getClassroomStats() {
+export async function getClassroomStats(requester?: AuthenticatedUser) {
+  const scope = requester?.campusId ? { campusId: requester.campusId } : {};
   const [total, online, offline, degraded, activeAnomalies] = await Promise.all([
-    prisma.classroom.count({ where: { isActive: true } }),
-    prisma.classroom.count({ where: { isActive: true, status: 'online' } }),
-    prisma.classroom.count({ where: { isActive: true, status: 'offline' } }),
-    prisma.classroom.count({ where: { isActive: true, status: 'degraded' } }),
-    prisma.anomalyEvent.count({ where: { status: { in: ['open', 'acknowledged', 'assigned'] } } }),
+    prisma.classroom.count({ where: { ...scope, isActive: true } }),
+    prisma.classroom.count({ where: { ...scope, isActive: true, status: 'online' } }),
+    prisma.classroom.count({ where: { ...scope, isActive: true, status: 'offline' } }),
+    prisma.classroom.count({ where: { ...scope, isActive: true, status: 'degraded' } }),
+    prisma.anomalyEvent.count({ where: { ...scope, status: { in: ['open', 'acknowledged', 'assigned'] } } }),
   ]);
   return { total, online, offline, degraded, activeAnomalies };
 }
@@ -156,17 +163,22 @@ export async function processHeartbeat(hardwareNodeId: string, data: HeartbeatDa
   });
 
   // Emit real-time update
-  emitToNamespace('/classroom', 'classroom:update', {
+  emitToCampusNamespace('/classroom', classroom.campusId, 'classroom:update', {
     id:                    updated.id,
     status:                updated.status,
     recognitionConfidence: updated.recognitionConfidence,
     lastHeartbeatAt:       updated.lastHeartbeatAt,
     wasOffline,
+    campusId:              classroom.campusId,
   });
 
   // If came back online from offline, emit recovery event
   if (wasOffline && newStatus === 'online') {
-    emitToNamespace('/classroom', 'classroom:recovered', { id: updated.id, at: new Date().toISOString() });
+    emitToCampusNamespace('/classroom', classroom.campusId, 'classroom:recovered', {
+      id: updated.id,
+      at: new Date().toISOString(),
+      campusId: classroom.campusId,
+    });
     logger.info({ msg: 'Classroom came back online', classroomId: updated.id, hardwareNodeId });
   }
 
@@ -187,7 +199,7 @@ export async function markStaleClassroomsOffline(): Promise<{ offlineCount: numb
         { lastHeartbeatAt: null },
       ],
     },
-    select: { id: true, hardwareNodeId: true, classId: true },
+    select: { id: true, campusId: true, hardwareNodeId: true, classId: true },
   });
 
   if (stale.length === 0) return { offlineCount: 0, anomaliesCreated: 0 };
@@ -212,6 +224,7 @@ export async function markStaleClassroomsOffline(): Promise<{ offlineCount: numb
     if (!existing) {
       await prisma.anomalyEvent.create({
         data: {
+          campusId: classroom.campusId,
           classroomId: classroom.id,
           type:        'node_offline',
           description: `Hardware node ${classroom.hardwareNodeId} has not sent a heartbeat for over ${config.classroom.heartbeatStaleSeconds}s.`,
@@ -220,16 +233,18 @@ export async function markStaleClassroomsOffline(): Promise<{ offlineCount: numb
       });
       anomaliesCreated++;
 
-      emitToNamespace('/classroom', 'anomaly:created', {
+      emitToCampusNamespace('/classroom', classroom.campusId, 'anomaly:created', {
         classroomId:   classroom.id,
+        campusId:      classroom.campusId,
         type:          'node_offline',
         hardwareNodeId: classroom.hardwareNodeId,
         at:            new Date().toISOString(),
       });
     }
 
-    emitToNamespace('/classroom', 'classroom:update', {
+    emitToCampusNamespace('/classroom', classroom.campusId, 'classroom:update', {
       id:     classroom.id,
+      campusId: classroom.campusId,
       status: 'offline',
     });
   }

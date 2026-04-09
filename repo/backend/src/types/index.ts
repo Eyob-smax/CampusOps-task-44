@@ -23,7 +23,6 @@ export type ParkingAlertType =
 export type ParkingAlertStatus = 'open' | 'claimed' | 'closed' | 'escalated';
 
 export type FulfillmentStatus =
-  | 'draft'
   | 'pending'
   | 'processing'
   | 'shipped'
@@ -55,6 +54,7 @@ export interface AuthenticatedUser {
   id: string;
   username: string;
   role: UserRole;
+  campusId: string;
 }
 
 export interface PaginationQuery {
